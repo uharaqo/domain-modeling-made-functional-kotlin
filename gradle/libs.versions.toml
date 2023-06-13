@@ -1,0 +1,58 @@
+[versions]
+# kotlin
+kotlin = "1.8.21"
+kotlin-ksp = "1.8.21-1.0.11"
+kotlin-serialization = "1.5.1"
+kotlin-ktlint = "11.3.2"
+
+# db
+jooq = "3.18.4"
+jooq-gradle-plugin = "8.2"
+postgres-driver = "42.6.0"
+hikaricp = "5.0.1"
+
+# util
+arrow = "1.2.0-RC"
+protobuf = "3.23.2"
+
+# test, etc.
+spotless = "6.9.1"
+kotest = "5.6.2"
+kotest-arrow = "1.3.3"
+kotest-testcontainers = "1.3.3"
+testcontainers-postgres = "1.18.3"
+logback = "1.4.7"
+
+[libraries]
+kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+spotless-plugin-gradle = { module = "com.diffplug.spotless:spotless-plugin-gradle", version.ref = "spotless" }
+arrow-optics-ksp-plugin = { module = "io.arrow-kt:arrow-optics-ksp-plugin", version.ref = "arrow" }
+
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlin-serialization" }
+jooq-kotlin = { module = "org.jooq:jooq-kotlin", version.ref = "jooq" }
+jooq-kotlin-coroutines = { module = "org.jooq:jooq-kotlin-coroutines", version.ref = "jooq" }
+postgres = { module = "org.postgresql:postgresql", version.ref = "postgres-driver" }
+hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
+
+arrow-core = { module = "io.arrow-kt:arrow-core", version.ref = "arrow" }
+arrow-optics = { module = "io.arrow-kt:arrow-optics", version.ref = "arrow" }
+arrow-fx-coroutines = { module = "io.arrow-kt:arrow-fx-coroutines", version.ref = "arrow" }
+
+protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin", version.ref = "protobuf" }
+protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf" }
+protobuf-java-util = { module = "com.google.protobuf:protobuf-java-util", version.ref = "protobuf" }
+protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
+
+kotest-runner-junit5 = { module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
+kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
+kotest-assertions-arrow = { module = "io.kotest.extensions:kotest-assertions-arrow", version.ref = "kotest-arrow" }
+kotest-extensions-testcontainers = { module = "io.kotest.extensions:kotest-extensions-testcontainers", version.ref = "kotest-testcontainers" }
+testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers-postgres" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+
+ktlint-plugin = { module = "org.jlleitschuh.gradle.ktlint:org.jlleitschuh.gradle.ktlint.gradle.plugin", version.ref = "kotlin-ktlint" }
+ktlint-idea-plugin = { module = "org.jlleitschuh.gradle.ktlint-idea:org.jlleitschuh.gradle.ktlint-idea.gradle.plugin", version.ref = "kotlin-ktlint" }
+
+[bundles]
+
+[plugins]
