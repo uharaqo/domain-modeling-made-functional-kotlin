@@ -4,6 +4,7 @@ import arrow.core.*
 import arrow.core.raise.*
 import io.github.uharaqo.dmmf.ordertaking.common.*
 import io.github.uharaqo.dmmf.ordertaking.placeorder.implementation.*
+import kotlinx.serialization.Serializable
 
 // ======================================================
 // This file contains the logic for working with data transfer objects (DTOs)
@@ -22,7 +23,7 @@ import io.github.uharaqo.dmmf.ordertaking.placeorder.implementation.*
 // ===============================================
 // DTO for CustomerInfo
 // ===============================================
-
+@Serializable
 data class CustomerInfoDto(
     val firstName: String,
     val lastName: String,
@@ -75,7 +76,7 @@ data class CustomerInfoDto(
 // ===============================================
 //  DTO for Address
 // ===============================================
-
+@Serializable
 data class AddressDto(
     val addressLine1: String,
     val addressLine2: String,
@@ -152,6 +153,7 @@ data class AddressDto(
 // ===============================================
 
     // From the order form used as input
+    @Serializable
     data class OrderFormLineDto(
         val orderLineId: String,
         val productCode: String,
@@ -214,6 +216,7 @@ data class PricedOrderLineDto(
 // ===============================================
 //  DTO for OrderForm
 // ===============================================
+@Serializable
 data class OrderFormDto(
     val orderId: String,
     val customerInfo: CustomerInfoDto,
