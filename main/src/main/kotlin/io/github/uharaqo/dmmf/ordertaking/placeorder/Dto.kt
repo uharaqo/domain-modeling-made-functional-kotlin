@@ -56,7 +56,7 @@ data class CustomerInfoDto(
                 // combine the components to create the domain object
                 val name = PersonalName(firstName = first, lastName = last)
                 val info = CustomerInfo(name = name, emailAddress = email, vipStatus = vipStatus)
-                return info.right()
+                info
             }
 
         // Convert a CustomerInfo object into the corresponding DTO.

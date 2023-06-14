@@ -5,7 +5,6 @@ import arrow.core.raise.*
 import io.github.uharaqo.dmmf.ordertaking.common.*
 import io.github.uharaqo.dmmf.ordertaking.placeorder.*
 import kotlin.collections.flatten
-import kotlin.contracts.ExperimentalContracts
 
 // ======================================================
 // This file contains the final implementation for the PlaceOrder workflow
@@ -296,26 +295,14 @@ fun toOrderLineId(orderId: String): Either<ValidationError, OrderLineId> =
 fun toProductCode(
     checkProductCodeExists: CheckProductCodeExists,
     productCode: String,
-): Either<ValidationError, ProductCode> {
-    // create a ProductCode -> Result<ProductCode,...> function
-    // suitable for using in a pipeline
-    val checkProduct = { _productCode: ProductCode ->
-        if (checkProductCodeExists(_productCode)) {
-            _productCode.right()
-        } else {
-            ValidationError("Invalid: $_productCode").left()
-        }
-    }
-
-    // assemble the pipeline
-    return ProductCode("ProductCode", productCode)
+): Either<ValidationError, ProductCode> =
+    ProductCode("ProductCode", productCode)
+        .onRight { code -> either { ensure(checkProductCodeExists(code)) { "Invalid: $code" } } }
         .mapLeft(::ValidationError)
-        .flatMap { checkProduct(it) }
-}
 
 // Helper function for validateOrder
 fun toOrderQuantity(productCode: ProductCode, quantity: Double): Either<ValidationError, OrderQuantity> =
-    OrderQuantity.invoke("OrderQuantity", productCode, quantity)
+    OrderQuantity("OrderQuantity", productCode, quantity)
         .mapLeft(::ValidationError)
 
 // Helper function for validateOrder
@@ -388,7 +375,7 @@ fun addCommentLine(pricingMethod: PricingMethod, lines: List<PricedOrderLine>) =
         is PricingMethod.Promotion ->
             "Applied promotion ${pricingMethod.value.value}"
                 .let(PricedOrderLine::CommentLine)
-                .let { lines.plus(it) }
+                .let(lines::plus)
     }
 
 fun getLinePrice(line: PricedOrderLine) =

@@ -1,6 +1,7 @@
 ﻿package io.github.uharaqo.dmmf.ordertaking.common
 
 import arrow.core.*
+import arrow.core.raise.*
 
 // We are defining types and submodules, so we can use a namespace
 // rather than a module at the top level
@@ -59,10 +60,12 @@ enum class VipStatus {
         //  Create a VipStatus from a string
         //  Return Error if input is null, empty, or doesn't match one of the cases
         operator fun invoke(fieldName: String, str: String): Either<String, VipStatus> =
-            when (str) {
-                "normal", "Normal" -> Normal.right()
-                "vip", "VIP" -> Vip.right()
-                else -> "$fieldName: Must be one of 'Normal', 'VIP'".left()
+            either {
+                when (str) {
+                    "normal", "Normal" -> Normal
+                    "vip", "VIP" -> Vip
+                    else -> raise("$fieldName: Must be one of 'Normal', 'VIP'")
+                }
             }
     }
 }
@@ -164,16 +167,14 @@ sealed interface ProductCode {
         // Create an ProductCode from a string
         // Return Error if input is null, empty, or not matching pattern
         operator fun invoke(fieldName: String, code: String?): Either<String, ProductCode> =
-            if (code.isNullOrEmpty()) {
-                "$fieldName: Must not be null or empty".left()
-            } else if (code.startsWith("W")) {
-                WidgetCode(fieldName, code)
-                    .map(::Widget)
-            } else if (code.startsWith("G")) {
-                GizmoCode(fieldName, code)
-                    .map(::Gizmo)
-            } else {
-                "$fieldName: Format not recognized '$code'".left()
+            either {
+                ensureNotNull(code) { "$fieldName: Must not be null" }
+                ensure(code.isNotEmpty()) { "$fieldName: Must not be empty" }
+                when {
+                    code.startsWith("W") -> WidgetCode(fieldName, code).map(::Widget)
+                    code.startsWith("G") -> GizmoCode(fieldName, code).map(::Gizmo)
+                    else -> raise("$fieldName: Format not recognized '$code'")
+                }.bind()
             }
     }
 }
@@ -218,7 +219,11 @@ sealed interface OrderQuantity {
             }
 
         // Create a OrderQuantity from a productCode and quantity
-        operator fun invoke(fieldName: String, productCode: ProductCode, quantity: Double): Either<String, OrderQuantity> =
+        operator fun invoke(
+            fieldName: String,
+            productCode: ProductCode,
+            quantity: Double,
+        ): Either<String, OrderQuantity> =
             when (productCode) {
                 is ProductCode.Gizmo ->
                     UnitQuantity(fieldName, quantity.toInt())
@@ -264,10 +269,8 @@ value class BillingAmount(val value: Double) {
 
         // Sum a list of prices to make a billing amount
         // Return Error if total is out of bounds
-        fun sumPrices(prices: List<Price>): Either<String, BillingAmount> {
-            val total = prices.map(Price::value).sum()
-            return invoke(total)
-        }
+        fun sumPrices(prices: List<Price>): Either<String, BillingAmount> =
+            prices.sumOf(Price::value).let(::invoke)
     }
 }
 
@@ -290,12 +293,11 @@ object ConstrainedType {
     // Create a constrained string using the constructor provided
     // Return Error if input is null, empty, or length > maxLen
     fun <T> createString(fieldName: String, ctor: (String) -> T, maxLen: Int, str: String?): Either<String, T> =
-        if (str.isNullOrEmpty()) {
-            "$fieldName must not be null or empty".left()
-        } else if (str.length > maxLen) {
-            "$fieldName must not be more than $maxLen chars".left()
-        } else {
-            (ctor(str)).right()
+        either {
+            ensureNotNull(str) { "$fieldName must not be null" }
+            ensure(str.isNotEmpty()) { "$fieldName must not be empty" }
+            ensure(str.length <= maxLen) { "$fieldName must not be more than $maxLen chars" }
+            ctor(str)
         }
 
     // Create a optional constrained string using the constructor provided
@@ -303,23 +305,21 @@ object ConstrainedType {
     // Return error if length > maxLen
     // Return Some if the input is valid
     fun <T> createStringOption(fieldName: String, ctor: (String) -> T, maxLen: Int, str: String?): Either<String, T?> =
-        if (str.isNullOrEmpty()) {
-            null.right()
-        } else if (str.length > maxLen) {
-            "$fieldName must not be more than $maxLen chars".left()
-        } else {
-            ctor(str).right()
+        either {
+            nullable {
+                if (str == null) raise(null)
+                this@either.ensure(str.length <= maxLen) { "$fieldName must not be more than $maxLen chars" }
+                ctor(str)
+            }
         }
 
     // Create a constrained integer using the constructor provided
     // Return Error if input is less than minVal or more than maxVal
     fun <T> createInt(fieldName: String, ctor: (Int) -> T, minVal: Int, maxVal: Int, i: Int): Either<String, T> =
-        if (i < minVal) {
-            "$fieldName: Must not be less than $minVal".left()
-        } else if (i > maxVal) {
-            "$fieldName: Must not be greater than $maxVal".left()
-        } else {
-            ctor(i).right()
+        either {
+            ensure(i >= minVal) { "$fieldName: Must not be less than $minVal" }
+            ensure(i <= maxVal) { "$fieldName: Must not be greater than $maxVal" }
+            ctor(i)
         }
 
     // Create a constrained decimal using the constructor provided
@@ -331,22 +331,19 @@ object ConstrainedType {
         maxVal: Double,
         i: Double,
     ): Either<String, T> =
-        if (i < minVal) {
-            "$fieldName: Must not be less than $minVal".left()
-        } else if (i > maxVal) {
-            "$fieldName: Must not be greater than $maxVal".left()
-        } else {
-            ctor(i).right()
+        either {
+            ensure(i >= minVal) { "$fieldName: Must not be less than $minVal" }
+            ensure(i <= maxVal) { "$fieldName: Must not be greater than $maxVal" }
+            ctor(i)
         }
 
     // Create a constrained string using the constructor provided
     // Return Error if input is null. empty, or does not match the regex pattern
     fun <T> createLike(fieldName: String, ctor: (String) -> T, pattern: String, str: String?): Either<String, T> =
-        if (str.isNullOrEmpty()) {
-            "$fieldName: Must not be null or empty".left()
-        } else if (Regex(pattern).matches(str)) {
-            ctor(str).right()
-        } else {
-            "$fieldName: '$str' must match the pattern '$pattern'".left()
+        either {
+            ensureNotNull(str) { "$fieldName: Must not be null" }
+            ensure(str.isNotEmpty()) { "$fieldName: Must not be empty" }
+            ensure(pattern.matches(Regex(str))) { "$fieldName: '$str' must match the pattern '$pattern'" }
+            ctor(str)
         }
 }
