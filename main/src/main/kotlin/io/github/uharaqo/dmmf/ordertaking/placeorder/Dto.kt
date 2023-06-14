@@ -67,7 +67,7 @@ data class CustomerInfoDto(
                 firstName = domainObj.name.firstName.value,
                 lastName = domainObj.name.lastName.value,
                 emailAddress = domainObj.emailAddress.value,
-                vipStatus = domainObj.vipStatus.let(VipStatus::value),
+                vipStatus = domainObj.vipStatus.text,
             )
     }
 }
@@ -193,8 +193,8 @@ data class PricedOrderLineDto(
                     // this is a simple 1:1 copy
                     PricedOrderLineDto(
                         orderLineId = domainObj.value.orderLineId.value,
-                        productCode = domainObj.value.productCode.let(ProductCode::value),
-                        quantity = domainObj.value.quantity.let(OrderQuantity::value),
+                        productCode = domainObj.value.productCode.text,
+                        quantity = domainObj.value.quantity.quantity,
                         linePrice = domainObj.value.linePrice.value,
                         comment = "",
                     )
@@ -256,8 +256,8 @@ data class ShippableOrderPlacedDto(
     companion object {
         fun fromShippableOrderLine(domainObj: ShippableOrderLine): ShippableOrderLineDto =
             ShippableOrderLineDto(
-                productCode = domainObj.productCode.let(ProductCode::value),
-                quantity = domainObj.quantity.let(OrderQuantity::value),
+                productCode = domainObj.productCode.text,
+                quantity = domainObj.quantity.quantity,
             )
 
         // Convert a ShippableOrderPlaced object into the corresponding DTO.
@@ -307,10 +307,7 @@ data class OrderAcknowledgmentSentDto(
         // Convert a OrderAcknowledgmentSent object into the corresponding DTO.
         // Used when exporting from the domain to the outside world.
         fun fromDomain(domainObj: OrderAcknowledgmentSent): OrderAcknowledgmentSentDto =
-            OrderAcknowledgmentSentDto(
-                orderId = domainObj.orderId.value,
-                emailAddress = domainObj.emailAddress.value,
-            )
+            OrderAcknowledgmentSentDto(orderId = domainObj.orderId.value, emailAddress = domainObj.emailAddress.value)
     }
 }
 
@@ -328,16 +325,13 @@ value class PlaceOrderEventDto(val value: Map<String, Any>) {
         fun fromDomain(domainObj: PlaceOrderEvent): PlaceOrderEventDto =
             when (domainObj) {
                 is PlaceOrderEvent.ShippableOrderPlaced ->
-                    domainObj.value.let(ShippableOrderPlacedDto::fromDomain)
-                        .let { "ShippableOrderPlaced" to (it as Any) }
+                    "ShippableOrderPlaced" to ShippableOrderPlacedDto.fromDomain(domainObj.value)
 
                 is PlaceOrderEvent.BillableOrderPlaced ->
-                    domainObj.value.let(BillableOrderPlacedDto::fromDomain)
-                        .let { "BillableOrderPlaced" to (it as Any) }
+                    "BillableOrderPlaced" to BillableOrderPlacedDto.fromDomain(domainObj.value)
 
                 is PlaceOrderEvent.AcknowledgmentSent ->
-                    domainObj.value.let(OrderAcknowledgmentSentDto::fromDomain)
-                        .let { "OrderAcknowledgmentSent" to (it as Any) }
+                    "OrderAcknowledgmentSent" to OrderAcknowledgmentSentDto.fromDomain(domainObj.value)
             }
                 .let(::mapOf)
                 .let(::PlaceOrderEventDto)
@@ -356,16 +350,10 @@ data class PlaceOrderErrorDto(
         fun fromDomain(domainObj: PlaceOrderError): PlaceOrderErrorDto =
             when (domainObj) {
                 is PlaceOrderError.Validation ->
-                    PlaceOrderErrorDto(
-                        code = "ValidationError",
-                        message = domainObj.value.value,
-                    )
+                    PlaceOrderErrorDto(code = "ValidationError", message = domainObj.value.value)
 
                 is PlaceOrderError.Pricing ->
-                    PlaceOrderErrorDto(
-                        code = "PricingError",
-                        message = domainObj.value.value,
-                    )
+                    PlaceOrderErrorDto(code = "PricingError", message = domainObj.value.value)
 
                 is PlaceOrderError.RemoteService ->
                     PlaceOrderErrorDto(

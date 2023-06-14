@@ -353,7 +353,7 @@ fun toPricedOrderLine(
     validatedOrderLine: ValidatedOrderLine,
 ): Either<PricingError, PricedOrderLine> =
     either {
-        val qty = validatedOrderLine.quantity.let(OrderQuantity::value)
+        val qty = validatedOrderLine.quantity.quantity
         val price = validatedOrderLine.productCode.let(getProductPrice::invoke)
         val linePrice = Price.multiply(qty, price).mapLeft(::PricingError).bind()
         val pricedLine = PricedOrderProductLine(
@@ -368,14 +368,10 @@ fun toPricedOrderLine(
 // add the special comment line if needed
 fun addCommentLine(pricingMethod: PricingMethod, lines: List<PricedOrderLine>) =
     when (pricingMethod) {
-        PricingMethod.Standard ->
-            // unchanged
-            lines
+        PricingMethod.Standard -> lines
 
         is PricingMethod.Promotion ->
-            "Applied promotion ${pricingMethod.value.value}"
-                .let(PricedOrderLine::CommentLine)
-                .let(lines::plus)
+            "Applied promotion ${pricingMethod.value.value}".let(PricedOrderLine::CommentLine).let(lines::plus)
     }
 
 fun getLinePrice(line: PricedOrderLine) =
@@ -408,32 +404,30 @@ val priceOrder = PriceOrder { getPricingFunction, validatedOrder ->
 // Shipping step
 // ---------------------------
 
-private enum class ShippingAddressType {
-    UsLocalState,
-    UsRemoteState,
-    International,
+private enum class ShippingAddressType(val cost: Double) {
+    UsLocalState(5.0),
+    UsRemoteState(10.0),
+    International(20.0),
     ;
 
     companion object {
+        private val usLocalStates = setOf("CA", "OR", "AZ", "NV")
+
         fun from(address: Address): ShippingAddressType =
-            if (address.country.value == "US") {
-                when (address.state.value) {
-                    "CA", "OR", "AZ", "NV" -> UsLocalState
-                    else -> UsRemoteState
-                }
-            } else {
-                International
+            when (address.country.value) {
+                "US" ->
+                    when (address.state.value) {
+                        in usLocalStates -> UsLocalState
+                        else -> UsRemoteState
+                    }
+
+                else -> International
             }
     }
 }
 
 val calculateShippingCost = CalculateShippingCost { pricedOrder ->
-    when (ShippingAddressType.from(pricedOrder.shippingAddress)) {
-        ShippingAddressType.UsLocalState -> 5.0
-        ShippingAddressType.UsRemoteState -> 10.0
-        ShippingAddressType.International -> 20.0
-    }
-        .let(Price::unsafeCreate)
+    ShippingAddressType.from(pricedOrder.shippingAddress).cost.let(Price::unsafeCreate)
 }
 
 val addShippingInfoToOrder = AddShippingInfoToOrder { calculateShippingCost, pricedOrder ->
@@ -442,7 +436,7 @@ val addShippingInfoToOrder = AddShippingInfoToOrder { calculateShippingCost, pri
         shippingMethod = ShippingMethod.Fedex24,
         shippingCost = calculateShippingCost(pricedOrder),
     )
-// add it to the order
+    // add it to the order
     PricedOrderWithShippingMethod(shippingInfo, pricedOrder)
 }
 
@@ -454,15 +448,10 @@ val addShippingInfoToOrder = AddShippingInfoToOrder { calculateShippingCost, pri
 val freeVipShipping = FreeVipShipping { order ->
     val updatedShippingInfo =
         when (order.pricedOrder.customerInfo.vipStatus) {
-            VipStatus.Normal ->
-                // untouched
-                order.shippingInfo
+            VipStatus.Normal -> order.shippingInfo
 
             VipStatus.Vip ->
-                ShippingInfo(
-                    shippingCost = Price.unsafeCreate(0.0),
-                    shippingMethod = ShippingMethod.Fedex24,
-                )
+                ShippingInfo(shippingCost = Price.unsafeCreate(0.0), shippingMethod = ShippingMethod.Fedex24)
         }
 
     order.copy(shippingInfo = updatedShippingInfo)
@@ -489,8 +478,7 @@ val acknowledgeOrder = AcknowledgeOrder { createAcknowledgmentLetter, sendAcknow
                 emailAddress = pricedOrder.customerInfo.emailAddress,
             )
 
-        SendResult.NotSent ->
-            null
+        SendResult.NotSent -> null
     }
 }
 
@@ -501,10 +489,7 @@ val acknowledgeOrder = AcknowledgeOrder { createAcknowledgmentLetter, sendAcknow
 fun makeShipmentLine(line: PricedOrderLine): ShippableOrderLine? =
     when (line) {
         is PricedOrderLine.ProductLine ->
-            ShippableOrderLine(
-                productCode = line.value.productCode,
-                quantity = line.value.quantity,
-            )
+            ShippableOrderLine(productCode = line.value.productCode, quantity = line.value.quantity)
 
         is PricedOrderLine.CommentLine -> null
     }
@@ -514,51 +499,33 @@ fun createShippingEvent(placedOrder: PricedOrder): ShippableOrderPlaced =
         orderId = placedOrder.orderId,
         shippingAddress = placedOrder.shippingAddress,
         shipmentLines = placedOrder.lines.mapNotNull(::makeShipmentLine),
-        pdf = PdfAttachment(
-            name = "Order${placedOrder.orderId.let(OrderId::value)}.pdf",
-            bytes = ByteArray(0),
-        ),
+        pdf = PdfAttachment(name = "Order${placedOrder.orderId.let(OrderId::value)}.pdf", bytes = ByteArray(0)),
     )
 
-fun createBillingEvent(placedOrder: PricedOrder): BillableOrderPlaced? {
-    val billingAmount = placedOrder.amountToBill.let(BillingAmount::value)
-    return if (billingAmount > 0.0) {
+fun createBillingEvent(placedOrder: PricedOrder): BillableOrderPlaced? =
+    nullable {
+        placedOrder.amountToBill.let(BillingAmount::value)
+            .let { billingAmount -> if (billingAmount <= 0.0) raise(null) }
         BillableOrderPlaced(
             orderId = placedOrder.orderId,
             billingAddress = placedOrder.billingAddress,
             amountToBill = placedOrder.amountToBill,
         )
-    } else {
-        null
     }
-}
 
 // helper to convert an Option into a List
-fun <T> listOfOption(opt: T?): List<T> =
-    opt?.let { listOf(it) } ?: emptyList()
+private fun <T> T?.toListOrEmpty(): List<T> = this?.let { listOf(it) } ?: emptyList()
 
 val createEvents = CreateEvents { pricedOrder, acknowledgmentEventOpt ->
     val acknowledgmentEvents =
-        acknowledgmentEventOpt
-            ?.let(PlaceOrderEvent::AcknowledgmentSent)
-            .let(::listOfOption)
+        acknowledgmentEventOpt?.let(PlaceOrderEvent::AcknowledgmentSent).toListOrEmpty()
     val shippingEvents =
-        pricedOrder
-            .let(::createShippingEvent)
-            .let(PlaceOrderEvent::ShippableOrderPlaced)
-            .let(::listOf)
+        createShippingEvent(pricedOrder).let(PlaceOrderEvent::ShippableOrderPlaced).toListOrEmpty()
     val billingEvents =
-        pricedOrder
-            .let(::createBillingEvent)
-            ?.let(PlaceOrderEvent::BillableOrderPlaced)
-            .let(::listOfOption)
+        createBillingEvent(pricedOrder)?.let(PlaceOrderEvent::BillableOrderPlaced).toListOrEmpty()
 
     // return all the events
-    listOf(
-        acknowledgmentEvents,
-        shippingEvents,
-        billingEvents,
-    ).flatten()
+    listOf(acknowledgmentEvents, shippingEvents, billingEvents).flatten()
 }
 
 // ---------------------------

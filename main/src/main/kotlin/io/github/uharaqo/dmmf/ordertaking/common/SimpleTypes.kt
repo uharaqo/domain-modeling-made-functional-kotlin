@@ -34,7 +34,7 @@ value class String50(val value: String) {
 @JvmInline
 value class EmailAddress(val value: String) {
     companion object {
-        private const val pattern = ".+@.+"
+        private val pattern = Regex(".+@.+")
 
         // Create an EmailAddress from a string
         // Return Error if input is null, empty, or doesn't have an "@" in it
@@ -44,29 +44,19 @@ value class EmailAddress(val value: String) {
 }
 
 // Customer's VIP status
-enum class VipStatus {
-    Normal,
-    Vip,
+enum class VipStatus(val text: String) {
+    Normal("Normal"),
+    Vip("VIP"),
     ;
 
     companion object {
-        //  Return a string representation of VipStatus
-        fun value(status: VipStatus): String =
-            when (status) {
-                Normal -> "Normal"
-                Vip -> "VIP"
-            }
+        private val lookup = values().associateBy { it.text }
 
         //  Create a VipStatus from a string
         //  Return Error if input is null, empty, or doesn't match one of the cases
-        operator fun invoke(fieldName: String, str: String): Either<String, VipStatus> =
-            either {
-                when (str) {
-                    "normal", "Normal" -> Normal
-                    "vip", "VIP" -> Vip
-                    else -> raise("$fieldName: Must be one of 'Normal', 'VIP'")
-                }
-            }
+        operator fun invoke(fieldName: String, str: String): Either<String, VipStatus> = either {
+            ensureNotNull(lookup[str]) { "$fieldName: Must be one of 'Normal', 'VIP'" }
+        }
     }
 }
 
@@ -74,7 +64,7 @@ enum class VipStatus {
 @JvmInline
 value class ZipCode(val value: String) {
     companion object {
-        private const val pattern = """\d{5}"""
+        private val pattern = Regex("""\d{5}""")
 
         // Create a ZipCode from a string
         // Return Error if input is null, empty, or doesn't have 5 digits
@@ -87,8 +77,8 @@ value class ZipCode(val value: String) {
 @JvmInline
 value class UsStateCode(val value: String) {
     companion object {
-        private const val pattern =
-            "^(A[KLRZ]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|P[AR]|RI|S[CD]|T[NX]|UT|V[AIT]|W[AIVY])$"
+        private val pattern =
+            Regex("^(A[KLRZ]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|P[AR]|RI|S[CD]|T[NX]|UT|V[AIT]|W[AIVY])$")
 
         //  Create a UsStateCode from a string
         //  Return Error if input is null, empty, or doesn't have 2 letters
@@ -125,7 +115,7 @@ value class OrderLineId(val value: String) {
 @JvmInline
 value class WidgetCode(val value: String) {
     companion object {
-        private const val pattern = """W\d{4}"""
+        private val pattern = Regex("""W\d{4}""")
 
         // Create an WidgetCode from a string
         // Return Error if input is null. empty, or not matching pattern
@@ -139,7 +129,7 @@ value class WidgetCode(val value: String) {
 @JvmInline
 value class GizmoCode(val value: String) {
     companion object {
-        private const val pattern = """G\d{3}"""
+        private val pattern = Regex("""G\d{3}""")
 
         // Create an GizmoCode from a string
         // Return Error if input is null, empty, or not matching pattern
@@ -151,19 +141,21 @@ value class GizmoCode(val value: String) {
 
 // A ProductCode is either a Widget or a Gizmo
 sealed interface ProductCode {
-    @JvmInline
-    value class Widget(val value: WidgetCode) : ProductCode
+    val text: String
 
     @JvmInline
-    value class Gizmo(val value: GizmoCode) : ProductCode
+    value class Widget(val value: WidgetCode) : ProductCode {
+        override val text: String
+            get() = value.value
+    }
+
+    @JvmInline
+    value class Gizmo(val value: GizmoCode) : ProductCode {
+        override val text: String
+            get() = value.value
+    }
 
     companion object {
-        fun value(productCode: ProductCode): String =
-            when (productCode) {
-                is Gizmo -> productCode.value.value
-                is Widget -> productCode.value.value
-            }
-
         // Create an ProductCode from a string
         // Return Error if input is null, empty, or not matching pattern
         operator fun invoke(fieldName: String, code: String?): Either<String, ProductCode> =
@@ -203,21 +195,21 @@ value class KilogramQuantity(val value: Double) {
 
 // A Quantity is either a Unit or a Kilogram
 sealed interface OrderQuantity {
-    @JvmInline
-    value class Unit(val value: UnitQuantity) : OrderQuantity
+    val quantity: Double
 
     @JvmInline
-    value class Kilogram(val value: KilogramQuantity) : OrderQuantity
+    value class Unit(val value: UnitQuantity) : OrderQuantity {
+        override val quantity: Double
+            get() = value.value.toDouble()
+    }
+
+    @JvmInline
+    value class Kilogram(val value: KilogramQuantity) : OrderQuantity {
+        override val quantity: Double
+            get() = value.value
+    }
 
     companion object {
-
-        // Return the value inside a OrderQuantity
-        fun value(qty: OrderQuantity): Double =
-            when (qty) {
-                is Unit -> qty.value.value.toDouble()
-                is Kilogram -> qty.value.value
-            }
-
         // Create a OrderQuantity from a productCode and quantity
         operator fun invoke(
             fieldName: String,
@@ -225,13 +217,8 @@ sealed interface OrderQuantity {
             quantity: Double,
         ): Either<String, OrderQuantity> =
             when (productCode) {
-                is ProductCode.Gizmo ->
-                    UnitQuantity(fieldName, quantity.toInt())
-                        .map(OrderQuantity::Unit)
-
-                is ProductCode.Widget ->
-                    KilogramQuantity(fieldName, quantity)
-                        .map(OrderQuantity::Kilogram)
+                is ProductCode.Gizmo -> UnitQuantity(fieldName, quantity.toInt()).map(OrderQuantity::Unit)
+                is ProductCode.Widget -> KilogramQuantity(fieldName, quantity).map(OrderQuantity::Kilogram)
             }
     }
 }
@@ -339,11 +326,11 @@ object ConstrainedType {
 
     // Create a constrained string using the constructor provided
     // Return Error if input is null. empty, or does not match the regex pattern
-    fun <T> createLike(fieldName: String, ctor: (String) -> T, pattern: String, str: String?): Either<String, T> =
+    fun <T> createLike(fieldName: String, ctor: (String) -> T, pattern: Regex, str: String?): Either<String, T> =
         either {
             ensureNotNull(str) { "$fieldName: Must not be null" }
             ensure(str.isNotEmpty()) { "$fieldName: Must not be empty" }
-            ensure(pattern.matches(Regex(str))) { "$fieldName: '$str' must match the pattern '$pattern'" }
+            ensure(pattern.matches(str)) { "$fieldName: '$str' must match the pattern '$pattern'" }
             ctor(str)
         }
 }
