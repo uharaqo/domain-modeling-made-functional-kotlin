@@ -11,40 +11,29 @@ object Pricing {
 
     // Create a pricing method given a promotionCode on the unvalidated order form
     // If null -> Standard otherwise wrap in PromotionCode
-    fun createPricingMethod(promotionCode: String?) =
-        if (promotionCode.isNullOrBlank()) {
-            PricingMethod.Standard
-        } else {
-            PricingMethod.Promotion(PromotionCode(promotionCode))
+    fun createPricingMethod(promotionCode: String?): PricingMethod =
+        when {
+            promotionCode.isNullOrBlank() -> PricingMethod.Standard
+            else -> PricingMethod.Promotion(PromotionCode(promotionCode))
         }
 
     fun getPricingFunction(standardPrices: GetStandardPrices, promoPrices: GetPromotionPrices): GetPricingFunction {
-        // the original pricing function
-        val getStandardPrice: GetProductPrice =
-            // cache the standard prices
-            standardPrices()
+        // cache the standard prices
+        val getStandardPrice: GetProductPrice = standardPrices()
 
         // the promotional pricing function
         val getPromotionPrice = { promotionCode: PromotionCode ->
             // cache the promotional prices
             val getPromotionPrice = promoPrices(promotionCode)
             // return the lookup function
-            GetProductPrice { productCode ->
-                getPromotionPrice(productCode)
-                    // not found in promotional prices
-                    // so use standard price
-                    ?: getStandardPrice(productCode)
-            }
+            GetProductPrice { productCode -> getPromotionPrice(productCode) ?: getStandardPrice(productCode) }
         }
 
         // return a function that conforms to GetPricingFunction
         return GetPricingFunction { pricingMethod ->
             when (pricingMethod) {
-                PricingMethod.Standard ->
-                    getStandardPrice
-
-                is PricingMethod.Promotion ->
-                    getPromotionPrice(pricingMethod.value)
+                PricingMethod.Standard -> getStandardPrice
+                is PricingMethod.Promotion -> getPromotionPrice(pricingMethod.value)
             }
         }
     }

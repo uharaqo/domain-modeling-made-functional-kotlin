@@ -5,7 +5,6 @@ import arrow.core.raise.*
 import io.github.uharaqo.dmmf.ordertaking.common.*
 import io.github.uharaqo.dmmf.ordertaking.placeorder.*
 import kotlin.collections.flatten
-import kotlin.contracts.ExperimentalContracts
 
 // ======================================================
 // This file contains the final implementation for the PlaceOrder workflow
@@ -235,18 +234,10 @@ fun interface CreateEvents {
 
 fun toCustomerInfo(unvalidatedCustomerInfo: UnvalidatedCustomerInfo): Either<ValidationError, CustomerInfo> =
     either {
-        val firstName =
-            unvalidatedCustomerInfo.firstName
-                .let(String50.Companion::create.partially1("FirstName")).bind()
-        val lastName =
-            unvalidatedCustomerInfo.lastName
-                .let(String50.Companion::create.partially1("LastName")).bind()
-        val emailAddress =
-            unvalidatedCustomerInfo.emailAddress
-                .let(EmailAddress.Companion::create.partially1("EmailAddress")).bind()
-        val vipStatus =
-            unvalidatedCustomerInfo.vipStatus
-                .let(VipStatus.Companion::create.partially1("vipStatus")).bind()
+        val firstName = String50("FirstName", unvalidatedCustomerInfo.firstName).bind()
+        val lastName = String50("LastName", unvalidatedCustomerInfo.lastName).bind()
+        val emailAddress = EmailAddress("EmailAddress", unvalidatedCustomerInfo.emailAddress).bind()
+        val vipStatus = VipStatus("VipStatus", unvalidatedCustomerInfo.vipStatus).bind()
         val customerInfo = CustomerInfo(
             name = PersonalName(firstName = firstName, lastName = lastName),
             emailAddress = emailAddress,
@@ -258,30 +249,14 @@ fun toCustomerInfo(unvalidatedCustomerInfo: UnvalidatedCustomerInfo): Either<Val
 fun toAddress(checkedAddress: CheckedAddress): Either<ValidationError, Address> =
     either {
         val addr = checkedAddress.value
-        val addressLine1 =
-            addr.addressLine1
-                .let(String50.Companion::create.partially1("AddressLine1")).bind()
-        val addressLine2 =
-            addr.addressLine2
-                .let(String50.Companion::createOption.partially1("AddressLine2")).bind()
-        val addressLine3 =
-            addr.addressLine3
-                .let(String50.Companion::createOption.partially1("AddressLine3")).bind()
-        val addressLine4 =
-            addr.addressLine4
-                .let(String50.Companion::createOption.partially1("AddressLine4")).bind()
-        val city =
-            addr.city
-                .let(String50.Companion::create.partially1("City")).bind()
-        val zipCode =
-            addr.zipCode
-                .let(ZipCode.Companion::create.partially1("ZipCode")).bind()
-        val state =
-            addr.state
-                .let(UsStateCode.Companion::create.partially1("State")).bind()
-        val country =
-            addr.country
-                .let(String50.Companion::create.partially1("Country")).bind()
+        val addressLine1 = String50("AddressLine1", addr.addressLine1).bind()
+        val addressLine2 = String50.optional("AddressLine2", addr.addressLine2).bind()
+        val addressLine3 = String50.optional("AddressLine3", addr.addressLine3).bind()
+        val addressLine4 = String50.optional("AddressLine4", addr.addressLine4).bind()
+        val city = String50("City", addr.city).bind()
+        val zipCode = ZipCode("ZipCode", addr.zipCode).bind()
+        val state = UsStateCode("State", addr.state).bind()
+        val country = String50("Country", addr.country).bind()
         val address = Address(
             addressLine1 = addressLine1,
             addressLine2 = addressLine2,
@@ -310,41 +285,24 @@ suspend fun toCheckedAddress(
         }
 
 fun toOrderId(orderId: String): Either<ValidationError, OrderId> =
-    orderId
-        .let(OrderId.Companion::create.partially1("OrderId"))
-        .mapLeft(::ValidationError)
+    OrderId("OrderId", orderId).mapLeft(::ValidationError)
 
 // Helper function for validateOrder
 fun toOrderLineId(orderId: String): Either<ValidationError, OrderLineId> =
-    orderId
-        .let(OrderLineId.Companion::create.partially1("OrderLineId"))
-        .mapLeft(::ValidationError)
+    OrderLineId("OrderLineId", orderId).mapLeft(::ValidationError)
 
 // Helper function for validateOrder
 fun toProductCode(
     checkProductCodeExists: CheckProductCodeExists,
     productCode: String,
-): Either<ValidationError, ProductCode> {
-    // create a ProductCode -> Result<ProductCode,...> function
-    // suitable for using in a pipeline
-    val checkProduct = { _productCode: ProductCode ->
-        if (checkProductCodeExists(_productCode)) {
-            _productCode.right()
-        } else {
-            ValidationError("Invalid: $_productCode").left()
-        }
-    }
-
-    // assemble the pipeline
-    return productCode
-        .let(ProductCode.Companion::create.partially1("ProductCode"))
+): Either<ValidationError, ProductCode> =
+    ProductCode("ProductCode", productCode)
+        .onRight { code -> either { ensure(checkProductCodeExists(code)) { "Invalid: $code" } } }
         .mapLeft(::ValidationError)
-        .flatMap { checkProduct(it) }
-}
 
 // Helper function for validateOrder
 fun toOrderQuantity(productCode: ProductCode, quantity: Double): Either<ValidationError, OrderQuantity> =
-    OrderQuantity.create("OrderQuantity", productCode, quantity)
+    OrderQuantity("OrderQuantity", productCode, quantity)
         .mapLeft(::ValidationError)
 
 // Helper function for validateOrder
@@ -353,15 +311,9 @@ fun toValidatedOrderLine(
     unvalidatedOrderLine: UnvalidatedOrderLine,
 ): Either<ValidationError, ValidatedOrderLine> =
     either {
-        val orderLineId =
-            unvalidatedOrderLine.orderLineId
-                .let(::toOrderLineId).bind()
-        val productCode =
-            unvalidatedOrderLine.productCode
-                .let(::toProductCode.partially1(checkProductExists)).bind()
-        val quantity =
-            unvalidatedOrderLine.quantity
-                .let(::toOrderQuantity.partially1(productCode)).bind()
+        val orderLineId = toOrderLineId(unvalidatedOrderLine.orderLineId).bind()
+        val productCode = toProductCode(checkProductExists, unvalidatedOrderLine.productCode).bind()
+        val quantity = toOrderQuantity(productCode, unvalidatedOrderLine.quantity).bind()
         val validatedOrderLine = ValidatedOrderLine(
             orderLineId = orderLineId,
             productCode = productCode,
@@ -370,41 +322,16 @@ fun toValidatedOrderLine(
         validatedOrderLine
     }
 
-@OptIn(ExperimentalContracts::class)
-suspend inline fun <T, R> T.letSuspend(crossinline block: suspend (T) -> R): R {
-    kotlin.contracts.contract {
-        callsInPlace(block, kotlin.contracts.InvocationKind.EXACTLY_ONCE)
-    }
-    return block(this)
-}
-
 val validateOrder = ValidateOrder { checkProductCodeExists, checkAddressExists, unvalidatedOrder ->
     either {
-        val orderId =
-            unvalidatedOrder.orderId
-                .let(::toOrderId).bind()
-        val customerInfo =
-            unvalidatedOrder.customerInfo
-                .let(::toCustomerInfo).bind()
-        val checkedShippingAddress =
-            unvalidatedOrder.shippingAddress
-                .letSuspend(::toCheckedAddress.partially1(checkAddressExists)).bind()
-        val shippingAddress =
-            checkedShippingAddress
-                .let(::toAddress).bind()
-        val checkedBillingAddress =
-            unvalidatedOrder.billingAddress
-                .letSuspend(::toCheckedAddress.partially1(checkAddressExists)).bind()
-        val billingAddress =
-            checkedBillingAddress
-                .let(::toAddress).bind()
-        val lines =
-            unvalidatedOrder.lines
-                .map(::toValidatedOrderLine.partially1(checkProductCodeExists))
-                .map { it.bind() }
-        val pricingMethod =
-            unvalidatedOrder.promotionCode
-                .let(Pricing::createPricingMethod)
+        val orderId = toOrderId(unvalidatedOrder.orderId).bind()
+        val customerInfo = toCustomerInfo(unvalidatedOrder.customerInfo).bind()
+        val checkedShippingAddress = toCheckedAddress(checkAddressExists, unvalidatedOrder.shippingAddress).bind()
+        val shippingAddress = toAddress(checkedShippingAddress).bind()
+        val checkedBillingAddress = toCheckedAddress(checkAddressExists, unvalidatedOrder.billingAddress).bind()
+        val billingAddress = toAddress(checkedBillingAddress).bind()
+        val lines = unvalidatedOrder.lines.map { toValidatedOrderLine(checkProductCodeExists, it).bind() }
+        val pricingMethod = Pricing.createPricingMethod(unvalidatedOrder.promotionCode)
         val validatedOrder = ValidatedOrder(
             orderId = orderId,
             customerInfo = customerInfo,
@@ -426,7 +353,7 @@ fun toPricedOrderLine(
     validatedOrderLine: ValidatedOrderLine,
 ): Either<PricingError, PricedOrderLine> =
     either {
-        val qty = validatedOrderLine.quantity.let(OrderQuantity::value)
+        val qty = validatedOrderLine.quantity.quantity
         val price = validatedOrderLine.productCode.let(getProductPrice::invoke)
         val linePrice = Price.multiply(qty, price).mapLeft(::PricingError).bind()
         val pricedLine = PricedOrderProductLine(
@@ -441,14 +368,10 @@ fun toPricedOrderLine(
 // add the special comment line if needed
 fun addCommentLine(pricingMethod: PricingMethod, lines: List<PricedOrderLine>) =
     when (pricingMethod) {
-        PricingMethod.Standard ->
-            // unchanged
-            lines
+        PricingMethod.Standard -> lines
 
         is PricingMethod.Promotion ->
-            "Applied promotion ${pricingMethod.value.value}"
-                .let(PricedOrderLine::CommentLine)
-                .let { lines.plus(it) }
+            "Applied promotion ${pricingMethod.value.value}".let(PricedOrderLine::CommentLine).let(lines::plus)
     }
 
 fun getLinePrice(line: PricedOrderLine) =
@@ -460,22 +383,16 @@ fun getLinePrice(line: PricedOrderLine) =
 val priceOrder = PriceOrder { getPricingFunction, validatedOrder ->
     either {
         val getProductPrice = getPricingFunction::invoke.partially1(validatedOrder.pricingMethod)()
-        val lines =
-            validatedOrder.lines
-                .map(::toPricedOrderLine.partially1(getProductPrice))
-                .map { it.bind() }
-                .let(::addCommentLine.partially1(validatedOrder.pricingMethod))
-        val amountToBill =
-            lines
-                .map(::getLinePrice)
-                .let(BillingAmount::sumPrices)
-                .mapLeft(::PricingError).bind()
+        val lines = validatedOrder.lines.map { toPricedOrderLine(getProductPrice, it).bind() }
+        val linesWithComment = addCommentLine(validatedOrder.pricingMethod, lines)
+        val prices = linesWithComment.map(::getLinePrice)
+        val amountToBill = BillingAmount.sumPrices(prices).mapLeft(::PricingError).bind()
         val pricedOrder = PricedOrder(
             orderId = validatedOrder.orderId,
             customerInfo = validatedOrder.customerInfo,
             shippingAddress = validatedOrder.shippingAddress,
             billingAddress = validatedOrder.billingAddress,
-            lines = lines,
+            lines = linesWithComment,
             amountToBill = amountToBill,
             pricingMethod = validatedOrder.pricingMethod,
         )
@@ -487,32 +404,30 @@ val priceOrder = PriceOrder { getPricingFunction, validatedOrder ->
 // Shipping step
 // ---------------------------
 
-private enum class ShippingAddressType {
-    UsLocalState,
-    UsRemoteState,
-    International,
+private enum class ShippingAddressType(val cost: Double) {
+    UsLocalState(5.0),
+    UsRemoteState(10.0),
+    International(20.0),
     ;
 
     companion object {
+        private val usLocalStates = setOf("CA", "OR", "AZ", "NV")
+
         fun from(address: Address): ShippingAddressType =
-            if (address.country.value == "US") {
-                when (address.state.value) {
-                    "CA", "OR", "AZ", "NV" -> UsLocalState
-                    else -> UsRemoteState
-                }
-            } else {
-                International
+            when (address.country.value) {
+                "US" ->
+                    when (address.state.value) {
+                        in usLocalStates -> UsLocalState
+                        else -> UsRemoteState
+                    }
+
+                else -> International
             }
     }
 }
 
 val calculateShippingCost = CalculateShippingCost { pricedOrder ->
-    when (ShippingAddressType.from(pricedOrder.shippingAddress)) {
-        ShippingAddressType.UsLocalState -> 5.0
-        ShippingAddressType.UsRemoteState -> 10.0
-        ShippingAddressType.International -> 20.0
-    }
-        .let(Price::unsafeCreate)
+    ShippingAddressType.from(pricedOrder.shippingAddress).cost.let(Price::unsafeCreate)
 }
 
 val addShippingInfoToOrder = AddShippingInfoToOrder { calculateShippingCost, pricedOrder ->
@@ -521,7 +436,7 @@ val addShippingInfoToOrder = AddShippingInfoToOrder { calculateShippingCost, pri
         shippingMethod = ShippingMethod.Fedex24,
         shippingCost = calculateShippingCost(pricedOrder),
     )
-// add it to the order
+    // add it to the order
     PricedOrderWithShippingMethod(shippingInfo, pricedOrder)
 }
 
@@ -533,15 +448,10 @@ val addShippingInfoToOrder = AddShippingInfoToOrder { calculateShippingCost, pri
 val freeVipShipping = FreeVipShipping { order ->
     val updatedShippingInfo =
         when (order.pricedOrder.customerInfo.vipStatus) {
-            VipStatus.Normal ->
-                // untouched
-                order.shippingInfo
+            VipStatus.Normal -> order.shippingInfo
 
             VipStatus.Vip ->
-                ShippingInfo(
-                    shippingCost = Price.unsafeCreate(0.0),
-                    shippingMethod = ShippingMethod.Fedex24,
-                )
+                ShippingInfo(shippingCost = Price.unsafeCreate(0.0), shippingMethod = ShippingMethod.Fedex24)
         }
 
     order.copy(shippingInfo = updatedShippingInfo)
@@ -568,8 +478,7 @@ val acknowledgeOrder = AcknowledgeOrder { createAcknowledgmentLetter, sendAcknow
                 emailAddress = pricedOrder.customerInfo.emailAddress,
             )
 
-        SendResult.NotSent ->
-            null
+        SendResult.NotSent -> null
     }
 }
 
@@ -580,10 +489,7 @@ val acknowledgeOrder = AcknowledgeOrder { createAcknowledgmentLetter, sendAcknow
 fun makeShipmentLine(line: PricedOrderLine): ShippableOrderLine? =
     when (line) {
         is PricedOrderLine.ProductLine ->
-            ShippableOrderLine(
-                productCode = line.value.productCode,
-                quantity = line.value.quantity,
-            )
+            ShippableOrderLine(productCode = line.value.productCode, quantity = line.value.quantity)
 
         is PricedOrderLine.CommentLine -> null
     }
@@ -593,51 +499,33 @@ fun createShippingEvent(placedOrder: PricedOrder): ShippableOrderPlaced =
         orderId = placedOrder.orderId,
         shippingAddress = placedOrder.shippingAddress,
         shipmentLines = placedOrder.lines.mapNotNull(::makeShipmentLine),
-        pdf = PdfAttachment(
-            name = "Order${placedOrder.orderId.let(OrderId::value)}.pdf",
-            bytes = ByteArray(0),
-        ),
+        pdf = PdfAttachment(name = "Order${placedOrder.orderId.let(OrderId::value)}.pdf", bytes = ByteArray(0)),
     )
 
-fun createBillingEvent(placedOrder: PricedOrder): BillableOrderPlaced? {
-    val billingAmount = placedOrder.amountToBill.let(BillingAmount::value)
-    return if (billingAmount > 0.0) {
+fun createBillingEvent(placedOrder: PricedOrder): BillableOrderPlaced? =
+    nullable {
+        placedOrder.amountToBill.let(BillingAmount::value)
+            .let { billingAmount -> if (billingAmount <= 0.0) raise(null) }
         BillableOrderPlaced(
             orderId = placedOrder.orderId,
             billingAddress = placedOrder.billingAddress,
             amountToBill = placedOrder.amountToBill,
         )
-    } else {
-        null
     }
-}
 
 // helper to convert an Option into a List
-fun <T> listOfOption(opt: T?): List<T> =
-    opt?.let { listOf(it) } ?: emptyList()
+private fun <T> T?.toListOrEmpty(): List<T> = this?.let { listOf(it) } ?: emptyList()
 
 val createEvents = CreateEvents { pricedOrder, acknowledgmentEventOpt ->
     val acknowledgmentEvents =
-        acknowledgmentEventOpt
-            ?.let(PlaceOrderEvent::AcknowledgmentSent)
-            .let(::listOfOption)
+        acknowledgmentEventOpt?.let(PlaceOrderEvent::AcknowledgmentSent).toListOrEmpty()
     val shippingEvents =
-        pricedOrder
-            .let(::createShippingEvent)
-            .let(PlaceOrderEvent::ShippableOrderPlaced)
-            .let(::listOf)
+        createShippingEvent(pricedOrder).let(PlaceOrderEvent::ShippableOrderPlaced).toListOrEmpty()
     val billingEvents =
-        pricedOrder
-            .let(::createBillingEvent)
-            ?.let(PlaceOrderEvent::BillableOrderPlaced)
-            .let(::listOfOption)
+        createBillingEvent(pricedOrder)?.let(PlaceOrderEvent::BillableOrderPlaced).toListOrEmpty()
 
     // return all the events
-    listOf(
-        acknowledgmentEvents,
-        shippingEvents,
-        billingEvents,
-    ).flatten()
+    listOf(acknowledgmentEvents, shippingEvents, billingEvents).flatten()
 }
 
 // ---------------------------
@@ -660,8 +548,7 @@ fun placeOrder(
             priceOrder(getPricingFunction, validatedOrder)
                 .mapLeft(PlaceOrderError::Pricing).bind()
         val pricedOrderWithShipping =
-            pricedOrder
-                .let(addShippingInfoToOrder::invoke.partially1(calculateShippingCost))
+            addShippingInfoToOrder(calculateShippingCost, pricedOrder)
                 .let(freeVipShipping::invoke)
         val acknowledgementOption =
             acknowledgeOrder(createOrderAcknowledgmentLetter, sendOrderAcknowledgment, pricedOrderWithShipping)

@@ -1,7 +1,6 @@
 ﻿package io.github.uharaqo.dmmf.ordertaking.placeorder.api
 
-import arrow.core.Either
-import arrow.core.right
+import arrow.core.*
 import io.github.uharaqo.dmmf.ordertaking.common.*
 import io.github.uharaqo.dmmf.ordertaking.placeorder.*
 import io.github.uharaqo.dmmf.ordertaking.placeorder.implementation.*
@@ -60,21 +59,12 @@ private val getStandardPrices = GetStandardPrices {
 }
 
 private val getPromotionPrices: (PromotionCode) -> TryGetProductPrice = { promotionCode: PromotionCode ->
-    val halfPricePromotion =
-        TryGetProductPrice { productCode ->
-            if (ProductCode.value(productCode) == "ONSALE") {
-                Price.unsafeCreate(5.0)
-            } else {
-                null
-            }
-        }
+    val halfPricePromotion = TryGetProductPrice { productCode ->
+        if (productCode.text == "ONSALE") Price.unsafeCreate(5.0) else null
+    }
 
     val quarterPricePromotion = TryGetProductPrice { productCode ->
-        if (ProductCode.value(productCode) == "ONSALE") {
-            Price.unsafeCreate(2.5)
-        } else {
-            null
-        }
+        if (productCode.text == "ONSALE") Price.unsafeCreate(2.5) else null
     }
 
     val noPromotion = TryGetProductPrice { productCode -> null }
@@ -92,9 +82,8 @@ private val getPricingFunction: GetPricingFunction =
 private val calculateShippingCost =
     io.github.uharaqo.dmmf.ordertaking.placeorder.implementation.calculateShippingCost
 
-private val createOrderAcknowledgmentLetter = CreateOrderAcknowledgmentLetter { pricedOrder ->
-    HtmlString("some text")
-}
+private val createOrderAcknowledgmentLetter =
+    CreateOrderAcknowledgmentLetter { pricedOrder -> HtmlString("some text") }
 
 private val sendOrderAcknowledgment = SendOrderAcknowledgment { orderAcknowledgement ->
     SendResult.Sent
@@ -112,26 +101,14 @@ val workflowResultToHttpReponse = { result: Either<PlaceOrderError, List<PlaceOr
             val dto = err.let(PlaceOrderErrorDto::fromDomain)
             // and serialize to JSON
             val json = serializeJson()(dto)
-            val response =
-                HttpResponse(
-                    httpStatusCode = 401,
-                    body = json,
-                )
-            response
+            HttpResponse(httpStatusCode = 401, body = json)
         },
         { events ->
             // turn domain events into dtos
-            val dtos =
-                events
-                    .map(PlaceOrderEventDto::fromDomain)
+            val dtos = events.map(PlaceOrderEventDto::fromDomain)
             // and serialize to JSON
             val json = serializeJson()(dtos)
-            val response =
-                HttpResponse(
-                    httpStatusCode = 200,
-                    body = json,
-                )
-            response
+            HttpResponse(httpStatusCode = 200, body = json)
         },
     )
 }
