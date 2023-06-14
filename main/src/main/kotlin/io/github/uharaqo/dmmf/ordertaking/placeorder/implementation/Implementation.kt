@@ -1,6 +1,11 @@
-module internal OrderTaking.PlaceOrder.Implementation
+﻿package io.github.uharaqo.dmmf.ordertaking.placeorder.implementation
 
-open OrderTaking.Common
+import arrow.core.*
+import arrow.core.raise.*
+import io.github.uharaqo.dmmf.ordertaking.common.*
+import io.github.uharaqo.dmmf.ordertaking.placeorder.*
+import kotlin.collections.flatten
+import kotlin.contracts.ExperimentalContracts
 
 // ======================================================
 // This file contains the final implementation for the PlaceOrder workflow
@@ -13,7 +18,6 @@ open OrderTaking.Common
 //   and the implementation of the overall workflow
 // ======================================================
 
-
 // ======================================================
 // Section 1 : Define each step in the workflow using types
 // ======================================================
@@ -24,99 +28,114 @@ open OrderTaking.Common
 
 // Product validation
 
-type CheckProductCodeExists =
-    ProductCode -> bool
+fun interface CheckProductCodeExists {
+    operator fun invoke(productCode: ProductCode): Boolean
+}
 
 // Address validation
-type AddressValidationError =
-    | InvalidFormat
-    | AddressNotFound
+enum class AddressValidationError {
+    InvalidFormat,
+    AddressNotFound,
+}
 
-type CheckedAddress = CheckedAddress of UnvalidatedAddress
+@JvmInline
+value class CheckedAddress(val value: UnvalidatedAddress)
 
-type CheckAddressExists =
-    UnvalidatedAddress -> AsyncResult<CheckedAddress,AddressValidationError>
+fun interface CheckAddressExists {
+    suspend operator fun invoke(address: UnvalidatedAddress): Either<AddressValidationError, CheckedAddress>
+}
 
 // ---------------------------
 // Validated Order
 // ---------------------------
 
-type ValidatedOrderLine =  {
-    OrderLineId : OrderLineId
-    ProductCode : ProductCode
-    Quantity : OrderQuantity
-    }
+data class ValidatedOrderLine(
+    val orderLineId: OrderLineId,
+    val productCode: ProductCode,
+    val quantity: OrderQuantity,
+)
 
-type ValidatedOrder = {
-    OrderId : OrderId
-    CustomerInfo : CustomerInfo
-    ShippingAddress : Address
-    BillingAddress : Address
-    Lines : ValidatedOrderLine list
-    }
+data class ValidatedOrder(
+    val orderId: OrderId,
+    val customerInfo: CustomerInfo,
+    val shippingAddress: Address,
+    val billingAddress: Address,
+    val lines: List<ValidatedOrderLine>,
+)
 
-type ValidateOrder =
-    CheckProductCodeExists  // dependency
-     -> CheckAddressExists  // dependency
-     -> UnvalidatedOrder    // input
-     -> AsyncResult<ValidatedOrder, ValidationError> // output
+fun interface ValidateOrder {
+    suspend operator fun invoke(
+        checkProductCodeExists: CheckProductCodeExists,
+        checkAddressExists: CheckAddressExists,
+        unvalidatedOrder: UnvalidatedOrder,
+    ): Either<ValidationError, ValidatedOrder>
+}
 
 // ---------------------------
 // Pricing step
 // ---------------------------
 
-type GetProductPrice =
-    ProductCode -> Price
+fun interface GetProductPrice {
+    operator fun invoke(productCode: ProductCode): Price
+}
 
 // priced state is defined Domain.WorkflowTypes
 
-type PriceOrder =
-    GetProductPrice     // dependency
-     -> ValidatedOrder  // input
-     -> Result<PricedOrder, PricingError>  // output
-
+fun interface PriceOrder {
+    suspend operator fun invoke(
+        getProductPrice: GetProductPrice,
+        validatedOrder: ValidatedOrder,
+    ): Either<PricingError, PricedOrder>
+}
 
 // ---------------------------
 // Send OrderAcknowledgment
 // ---------------------------
+@JvmInline
+value class HtmlString(val value: String)
 
-type HtmlString =
-    HtmlString of string
+data class OrderAcknowledgment(
+    val emailAddress: EmailAddress,
+    val letter: HtmlString,
+)
 
-type OrderAcknowledgment = {
-    EmailAddress : EmailAddress
-    Letter : HtmlString
-    }
+fun interface CreateOrderAcknowledgmentLetter {
+    operator fun invoke(pricedOrder: PricedOrder): HtmlString
+}
 
-type CreateOrderAcknowledgmentLetter =
-    PricedOrder -> HtmlString
+// Send the order acknowledgement to the customer
+// Note that this does NOT generate an Result-type error (at least not in this workflow)
+// because on failure we will continue anyway.
+// On success, we will generate a OrderAcknowledgmentSent event,
+// but on failure we won't.
 
-/// Send the order acknowledgement to the customer
-/// Note that this does NOT generate an Result-type error (at least not in this workflow)
-/// because on failure we will continue anyway.
-/// On success, we will generate a OrderAcknowledgmentSent event,
-/// but on failure we won't.
+enum class SendResult {
+    Sent,
+    NotSent,
+}
 
-type SendResult = Sent | NotSent
+fun interface SendOrderAcknowledgment {
+    operator fun invoke(orderAcknowledgment: OrderAcknowledgment): SendResult
+}
 
-type SendOrderAcknowledgment =
-    OrderAcknowledgment -> SendResult
-
-type AcknowledgeOrder =
-    CreateOrderAcknowledgmentLetter  // dependency
-     -> SendOrderAcknowledgment      // dependency
-     -> PricedOrder                  // input
-     -> OrderAcknowledgmentSent option // output
+fun interface AcknowledgeOrder {
+    operator fun invoke(
+        createAcknowledgmentLetter: CreateOrderAcknowledgmentLetter,
+        sendAcknowledgment: SendOrderAcknowledgment,
+        pricedOrder: PricedOrder,
+    ): OrderAcknowledgmentSent?
+}
 
 // ---------------------------
 // Create events
 // ---------------------------
 
-type CreateEvents =
-    PricedOrder                           // input
-     -> OrderAcknowledgmentSent option    // input (event from previous step)
-     -> PlaceOrderEvent list              // output
-
+fun interface CreateEvents {
+    operator fun invoke(
+        pricedOrder: PricedOrder,
+        acknowledgmentEventOpt: OrderAcknowledgmentSent?,
+    ): List<PlaceOrderEvent>
+}
 
 // ======================================================
 // Section 2 : Implementation
@@ -126,311 +145,313 @@ type CreateEvents =
 // ValidateOrder step
 // ---------------------------
 
-let toCustomerInfo (unvalidatedCustomerInfo: UnvalidatedCustomerInfo) =
-    result {
-        let! firstName =
-            unvalidatedCustomerInfo.FirstName
-            |> String50.create "FirstName"
-            |> Result.mapError ValidationError // convert creation error into ValidationError
-        let! lastName =
-            unvalidatedCustomerInfo.LastName
-            |> String50.create "LastName"
-            |> Result.mapError ValidationError // convert creation error into ValidationError
-        let! emailAddress =
-            unvalidatedCustomerInfo.EmailAddress
-            |> EmailAddress.create "EmailAddress"
-            |> Result.mapError ValidationError // convert creation error into ValidationError
-        let customerInfo = {
-            Name = {FirstName=firstName; LastName=lastName}
-            EmailAddress = emailAddress
-            }
-        return customerInfo
-    }
-
-let toAddress (CheckedAddress checkedAddress) =
-    result {
-        let! addressLine1 =
-            checkedAddress.AddressLine1
-            |> String50.create "AddressLine1"
-            |> Result.mapError ValidationError // convert creation error into ValidationError
-        let! addressLine2 =
-            checkedAddress.AddressLine2
-            |> String50.createOption "AddressLine2"
-            |> Result.mapError ValidationError // convert creation error into ValidationError
-        let! addressLine3 =
-            checkedAddress.AddressLine3
-            |> String50.createOption "AddressLine3"
-            |> Result.mapError ValidationError // convert creation error into ValidationError
-        let! addressLine4 =
-            checkedAddress.AddressLine4
-            |> String50.createOption "AddressLine4"
-            |> Result.mapError ValidationError // convert creation error into ValidationError
-        let! city =
-            checkedAddress.City
-            |> String50.create "City"
-            |> Result.mapError ValidationError // convert creation error into ValidationError
-        let! zipCode =
-            checkedAddress.ZipCode
-            |> ZipCode.create "ZipCode"
-            |> Result.mapError ValidationError // convert creation error into ValidationError
-        let address : Address = {
-            AddressLine1 = addressLine1
-            AddressLine2 = addressLine2
-            AddressLine3 = addressLine3
-            AddressLine4 = addressLine4
-            City = city
-            ZipCode = zipCode
-            }
-        return address
-    }
-
-/// Call the checkAddressExists and convert the error to a ValidationError
-let toCheckedAddress (checkAddress:CheckAddressExists) address =
-    address
-    |> checkAddress
-    |> AsyncResult.mapError (fun addrError ->
-        match addrError with
-        | AddressNotFound -> ValidationError "Address not found"
-        | InvalidFormat -> ValidationError "Address has bad format"
+fun toCustomerInfo(unvalidatedCustomerInfo: UnvalidatedCustomerInfo): Either<ValidationError, CustomerInfo> =
+    either {
+        val firstName =
+            unvalidatedCustomerInfo.firstName
+                .let(String50.Companion::create.partially1("FirstName")).bind()
+        val lastName =
+            unvalidatedCustomerInfo.lastName
+                .let(String50.Companion::create.partially1("LastName")).bind()
+        val emailAddress =
+            unvalidatedCustomerInfo.emailAddress
+                .let(EmailAddress.Companion::create.partially1("EmailAddress")).bind()
+        val customerInfo = CustomerInfo(
+            name = PersonalName(firstName = firstName, lastName = lastName),
+            emailAddress = emailAddress,
         )
+        customerInfo
+    }.mapLeft(::ValidationError)
 
-let toOrderId orderId =
+fun toAddress(checkedAddress: CheckedAddress): Either<ValidationError, Address> =
+    either {
+        val addr = checkedAddress.value
+        val addressLine1 =
+            addr.addressLine1
+                .let(String50.Companion::create.partially1("AddressLine1")).bind()
+        val addressLine2 =
+            addr.addressLine2
+                .let(String50.Companion::createOption.partially1("AddressLine2")).bind()
+        val addressLine3 =
+            addr.addressLine3
+                .let(String50.Companion::createOption.partially1("AddressLine3")).bind()
+        val addressLine4 =
+            addr.addressLine4
+                .let(String50.Companion::createOption.partially1("AddressLine4")).bind()
+        val city =
+            addr.city
+                .let(String50.Companion::create.partially1("City")).bind()
+        val zipCode =
+            addr.zipCode
+                .let(ZipCode.Companion::create.partially1("ZipCode")).bind()
+        val address = Address(
+            addressLine1 = addressLine1,
+            addressLine2 = addressLine2,
+            addressLine3 = addressLine3,
+            addressLine4 = addressLine4,
+            city = city,
+            zipCode = zipCode,
+        )
+        address
+    }.mapLeft(::ValidationError)
+
+// Call the checkAddressExists and convert the error to a ValidationError
+suspend fun toCheckedAddress(
+    checkAddress: CheckAddressExists,
+    address: UnvalidatedAddress,
+): Either<ValidationError, CheckedAddress> =
+    address
+        .let { checkAddress(it) }
+        .mapLeft { addrError ->
+            when (addrError) {
+                AddressValidationError.InvalidFormat -> ValidationError("Address not found")
+                AddressValidationError.AddressNotFound -> ValidationError("Address has bad format")
+            }
+        }
+
+fun toOrderId(orderId: String): Either<ValidationError, OrderId> =
     orderId
-    |> OrderId.create "OrderId"
-    |> Result.mapError ValidationError // convert creation error into ValidationError
+        .let(OrderId.Companion::create.partially1("OrderId"))
+        .mapLeft(::ValidationError)
 
-/// Helper function for validateOrder
-let toOrderLineId orderId =
+// Helper function for validateOrder
+fun toOrderLineId(orderId: String): Either<ValidationError, OrderLineId> =
     orderId
-    |> OrderLineId.create "OrderLineId"
-    |> Result.mapError ValidationError // convert creation error into ValidationError
+        .let(OrderLineId.Companion::create.partially1("OrderLineId"))
+        .mapLeft(::ValidationError)
 
-/// Helper function for validateOrder
-let toProductCode (checkProductCodeExists:CheckProductCodeExists) productCode =
-
+// Helper function for validateOrder
+fun toProductCode(
+    checkProductCodeExists: CheckProductCodeExists,
+    productCode: String,
+): Either<ValidationError, ProductCode> {
     // create a ProductCode -> Result<ProductCode,...> function
     // suitable for using in a pipeline
-    let checkProduct productCode  =
-        if checkProductCodeExists productCode then
-            Ok productCode
-        else
-            let msg = sprintf "Invalid: %A" productCode
-            Error (ValidationError msg)
-
-    // assemble the pipeline
-    productCode
-    |> ProductCode.create "ProductCode"
-    |> Result.mapError ValidationError // convert creation error into ValidationError
-    |> Result.bind checkProduct
-
-/// Helper function for validateOrder
-let toOrderQuantity productCode quantity =
-    OrderQuantity.create "OrderQuantity" productCode quantity
-    |> Result.mapError ValidationError // convert creation error into ValidationError
-
-/// Helper function for validateOrder
-let toValidatedOrderLine checkProductExists (unvalidatedOrderLine:UnvalidatedOrderLine) =
-    result {
-        let! orderLineId =
-            unvalidatedOrderLine.OrderLineId
-            |> toOrderLineId
-        let! productCode =
-            unvalidatedOrderLine.ProductCode
-            |> toProductCode checkProductExists
-        let! quantity =
-            unvalidatedOrderLine.Quantity
-            |> toOrderQuantity productCode
-        let validatedOrderLine = {
-            OrderLineId = orderLineId
-            ProductCode = productCode
-            Quantity = quantity
-            }
-        return validatedOrderLine
+    val checkProduct = { _productCode: ProductCode ->
+        if (checkProductCodeExists(_productCode)) {
+            _productCode.right()
+        } else {
+            ValidationError("Invalid: $_productCode").left()
+        }
     }
 
-let validateOrder : ValidateOrder =
-    fun checkProductCodeExists checkAddressExists unvalidatedOrder ->
-        asyncResult {
-            let! orderId =
-                unvalidatedOrder.OrderId
-                |> toOrderId
-                |> AsyncResult.ofResult
-            let! customerInfo =
-                unvalidatedOrder.CustomerInfo
-                |> toCustomerInfo
-                |> AsyncResult.ofResult
-            let! checkedShippingAddress =
-                unvalidatedOrder.ShippingAddress
-                |> toCheckedAddress checkAddressExists
-            let! shippingAddress =
-                checkedShippingAddress
-                |> toAddress
-                |> AsyncResult.ofResult
-            let! checkedBillingAddress =
-                unvalidatedOrder.BillingAddress
-                |> toCheckedAddress checkAddressExists
-            let! billingAddress  =
-                checkedBillingAddress
-                |> toAddress
-                |> AsyncResult.ofResult
-            let! lines =
-                unvalidatedOrder.Lines
-                |> List.map (toValidatedOrderLine checkProductCodeExists)
-                |> Result.sequence // convert list of Results to a single Result
-                |> AsyncResult.ofResult
-            let validatedOrder : ValidatedOrder = {
-                OrderId  = orderId
-                CustomerInfo = customerInfo
-                ShippingAddress = shippingAddress
-                BillingAddress = billingAddress
-                Lines = lines
-            }
-            return validatedOrder
-        }
+    // assemble the pipeline
+    return productCode
+        .let(ProductCode.Companion::create.partially1("ProductCode"))
+        .mapLeft(::ValidationError)
+        .flatMap { checkProduct(it) }
+}
+
+// Helper function for validateOrder
+fun toOrderQuantity(productCode: ProductCode, quantity: Double): Either<ValidationError, OrderQuantity> =
+    OrderQuantity.create("OrderQuantity", productCode, quantity)
+        .mapLeft(::ValidationError)
+
+// Helper function for validateOrder
+fun toValidatedOrderLine(
+    checkProductExists: CheckProductCodeExists,
+    unvalidatedOrderLine: UnvalidatedOrderLine,
+): Either<ValidationError, ValidatedOrderLine> =
+    either {
+        val orderLineId =
+            unvalidatedOrderLine.orderLineId
+                .let(::toOrderLineId).bind()
+        val productCode =
+            unvalidatedOrderLine.productCode
+                .let(::toProductCode.partially1(checkProductExists)).bind()
+        val quantity =
+            unvalidatedOrderLine.quantity
+                .let(::toOrderQuantity.partially1(productCode)).bind()
+        val validatedOrderLine = ValidatedOrderLine(
+            orderLineId = orderLineId,
+            productCode = productCode,
+            quantity = quantity,
+        )
+        validatedOrderLine
+    }
+
+@OptIn(ExperimentalContracts::class)
+suspend inline fun <T, R> T.letSuspend(crossinline block: suspend (T) -> R): R {
+    kotlin.contracts.contract {
+        callsInPlace(block, kotlin.contracts.InvocationKind.EXACTLY_ONCE)
+    }
+    return block(this)
+}
+
+val validateOrder = ValidateOrder { checkProductCodeExists, checkAddressExists, unvalidatedOrder ->
+    either {
+        val orderId =
+            unvalidatedOrder.orderId
+                .let(::toOrderId).bind()
+        val customerInfo =
+            unvalidatedOrder.customerInfo
+                .let(::toCustomerInfo).bind()
+        val checkedShippingAddress =
+            unvalidatedOrder.shippingAddress
+                .letSuspend(::toCheckedAddress.partially1(checkAddressExists)).bind()
+        val shippingAddress =
+            checkedShippingAddress
+                .let(::toAddress).bind()
+        val checkedBillingAddress =
+            unvalidatedOrder.billingAddress
+                .letSuspend(::toCheckedAddress.partially1(checkAddressExists)).bind()
+        val billingAddress =
+            checkedBillingAddress
+                .let(::toAddress).bind()
+        val lines =
+            unvalidatedOrder.lines
+                .map(::toValidatedOrderLine.partially1(checkProductCodeExists))
+                .map { it.bind() }
+        val validatedOrder = ValidatedOrder(
+            orderId = orderId,
+            customerInfo = customerInfo,
+            shippingAddress = shippingAddress,
+            billingAddress = billingAddress,
+            lines = lines,
+        )
+        validatedOrder
+    }
+}
 
 // ---------------------------
 // PriceOrder step
 // ---------------------------
 
-let toPricedOrderLine (getProductPrice:GetProductPrice) (validatedOrderLine:ValidatedOrderLine) =
-    result {
-        let qty = validatedOrderLine.Quantity |> OrderQuantity.value
-        let price = validatedOrderLine.ProductCode |> getProductPrice
-        let! linePrice =
-            Price.multiply qty price
-            |> Result.mapError PricingError // convert to PlaceOrderError
-        let pricedLine : PricedOrderLine = {
-            OrderLineId = validatedOrderLine.OrderLineId
-            ProductCode = validatedOrderLine.ProductCode
-            Quantity = validatedOrderLine.Quantity
-            LinePrice = linePrice
-            }
-        return pricedLine
+fun toPricedOrderLine(
+    getProductPrice: GetProductPrice,
+    validatedOrderLine: ValidatedOrderLine,
+): Either<PricingError, PricedOrderLine> =
+    either {
+        val qty = validatedOrderLine.quantity.let(OrderQuantity::value)
+        val price = validatedOrderLine.productCode.let(getProductPrice::invoke)
+        val linePrice = Price.multiply(qty, price).mapLeft(::PricingError).bind()
+        val pricedLine = PricedOrderLine(
+            orderLineId = validatedOrderLine.orderLineId,
+            productCode = validatedOrderLine.productCode,
+            quantity = validatedOrderLine.quantity,
+            linePrice = linePrice,
+        )
+        pricedLine
     }
 
-
-let priceOrder : PriceOrder =
-    fun getProductPrice validatedOrder ->
-        result {
-            let! lines =
-                validatedOrder.Lines
-                |> List.map (toPricedOrderLine getProductPrice)
-                |> Result.sequence // convert list of Results to a single Result
-            let! amountToBill =
-                lines
-                |> List.map (fun line -> line.LinePrice)  // get each line price
-                |> BillingAmount.sumPrices                // add them together as a BillingAmount
-                |> Result.mapError PricingError           // convert to PlaceOrderError
-            let pricedOrder : PricedOrder = {
-                OrderId  = validatedOrder.OrderId
-                CustomerInfo = validatedOrder.CustomerInfo
-                ShippingAddress = validatedOrder.ShippingAddress
-                BillingAddress = validatedOrder.BillingAddress
-                Lines = lines
-                AmountToBill = amountToBill
-            }
-            return pricedOrder
-        }
-
+val priceOrder = PriceOrder { getProductPrice, validatedOrder ->
+    either {
+        val lines =
+            validatedOrder.lines
+                .map(::toPricedOrderLine.partially1(getProductPrice))
+                .map { it.bind() }
+        val amountToBill =
+            lines
+                .map(PricedOrderLine::linePrice)
+                .let(BillingAmount::sumPrices)
+                .mapLeft(::PricingError).bind()
+        val pricedOrder = PricedOrder(
+            orderId = validatedOrder.orderId,
+            customerInfo = validatedOrder.customerInfo,
+            shippingAddress = validatedOrder.shippingAddress,
+            billingAddress = validatedOrder.billingAddress,
+            lines = lines,
+            amountToBill = amountToBill,
+        )
+        pricedOrder
+    }
+}
 
 // ---------------------------
 // AcknowledgeOrder step
 // ---------------------------
 
-let acknowledgeOrder : AcknowledgeOrder =
-    fun createAcknowledgmentLetter sendAcknowledgment pricedOrder ->
-        let letter = createAcknowledgmentLetter pricedOrder
-        let acknowledgment = {
-            EmailAddress = pricedOrder.CustomerInfo.EmailAddress
-            Letter = letter
-            }
+val acknowledgeOrder = AcknowledgeOrder { createAcknowledgmentLetter, sendAcknowledgment, pricedOrder ->
+    val letter = createAcknowledgmentLetter(pricedOrder)
+    val acknowledgment = OrderAcknowledgment(
+        emailAddress = pricedOrder.customerInfo.emailAddress,
+        letter = letter,
+    )
 
-        // if the acknowledgement was successfully sent,
-        // return the corresponding event, else return None
-        match sendAcknowledgment acknowledgment with
-        | Sent ->
-            let event = {
-                OrderId = pricedOrder.OrderId
-                EmailAddress = pricedOrder.CustomerInfo.EmailAddress
-                }
-            Some event
-        | NotSent ->
-            None
+    // if the acknowledgement was successfully sent,
+    // return the corresponding event, else return None
+    when (sendAcknowledgment(acknowledgment)) {
+        SendResult.Sent ->
+            OrderAcknowledgmentSent(
+                orderId = pricedOrder.orderId,
+                emailAddress = pricedOrder.customerInfo.emailAddress,
+            )
+
+        SendResult.NotSent ->
+            null
+    }
+}
 
 // ---------------------------
 // Create events
 // ---------------------------
 
-let createOrderPlacedEvent (placedOrder:PricedOrder) : OrderPlaced =
+fun createOrderPlacedEvent(placedOrder: PricedOrder): OrderPlaced =
     placedOrder
 
-let createBillingEvent (placedOrder:PricedOrder) : BillableOrderPlaced option =
-    let billingAmount = placedOrder.AmountToBill |> BillingAmount.value
-    if billingAmount > 0M then
-        {
-        OrderId = placedOrder.OrderId
-        BillingAddress = placedOrder.BillingAddress
-        AmountToBill = placedOrder.AmountToBill
-        } |> Some
-    else
-        None
+fun createBillingEvent(placedOrder: PricedOrder): BillableOrderPlaced? {
+    val billingAmount = placedOrder.amountToBill.let(BillingAmount::value)
+    return if (billingAmount > 0.0) {
+        BillableOrderPlaced(
+            orderId = placedOrder.orderId,
+            billingAddress = placedOrder.billingAddress,
+            amountToBill = placedOrder.amountToBill,
+        )
+    } else {
+        null
+    }
+}
 
-/// helper to convert an Option into a List
-let listOfOption opt =
-    match opt with
-    | Some x -> [x]
-    | None -> []
+// helper to convert an Option into a List
+fun <T> listOfOption(opt: T?): List<T> =
+    opt?.let { listOf(it) } ?: emptyList()
 
-let createEvents : CreateEvents =
-    fun pricedOrder acknowledgmentEventOpt ->
-        let acknowledgmentEvents =
-            acknowledgmentEventOpt
-            |> Option.map PlaceOrderEvent.AcknowledgmentSent
-            |> listOfOption
-        let orderPlacedEvents =
-            pricedOrder
-            |> createOrderPlacedEvent
-            |> PlaceOrderEvent.OrderPlaced
-            |> List.singleton
-        let billingEvents =
-            pricedOrder
-            |> createBillingEvent
-            |> Option.map PlaceOrderEvent.BillableOrderPlaced
-            |> listOfOption
+val createEvents = CreateEvents { pricedOrder, acknowledgmentEventOpt ->
+    val acknowledgmentEvents =
+        acknowledgmentEventOpt
+            ?.let(PlaceOrderEvent::AcknowledgmentSent)
+            .let(::listOfOption)
+    val orderPlacedEvents =
+        pricedOrder
+            .let(::createOrderPlacedEvent)
+            .let(PlaceOrderEvent::OrderPlaced)
+            .let(::listOf)
+    val billingEvents =
+        pricedOrder
+            .let(::createBillingEvent)
+            ?.let(PlaceOrderEvent::BillableOrderPlaced)
+            .let(::listOfOption)
 
-        // return all the events
-        [
-        yield! acknowledgmentEvents
-        yield! orderPlacedEvents
-        yield! billingEvents
-        ]
-
+    // return all the events
+    listOf(
+        acknowledgmentEvents,
+        orderPlacedEvents,
+        billingEvents,
+    ).flatten()
+}
 
 // ---------------------------
 // overall workflow
 // ---------------------------
 
-let placeOrder
-    checkProductExists // dependency
-    checkAddressExists // dependency
-    getProductPrice    // dependency
-    createOrderAcknowledgmentLetter  // dependency
-    sendOrderAcknowledgment // dependency
-    : PlaceOrder =       // definition of function
-
-    fun unvalidatedOrder ->
-        asyncResult {
-            let! validatedOrder =
-                validateOrder checkProductExists checkAddressExists unvalidatedOrder
-                |> AsyncResult.mapError PlaceOrderError.Validation
-            let! pricedOrder =
-                priceOrder getProductPrice validatedOrder
-                |> AsyncResult.ofResult
-                |> AsyncResult.mapError PlaceOrderError.Pricing
-            let acknowledgementOption =
-                acknowledgeOrder createOrderAcknowledgmentLetter sendOrderAcknowledgment pricedOrder
-            let events =
-                createEvents pricedOrder acknowledgementOption
-            return events
-        }
-
+fun placeOrder(
+    checkProductExists: CheckProductCodeExists,
+    checkAddressExists: CheckAddressExists,
+    getProductPrice: GetProductPrice,
+    createOrderAcknowledgmentLetter: CreateOrderAcknowledgmentLetter,
+    sendOrderAcknowledgment: SendOrderAcknowledgment,
+) = PlaceOrder { unvalidatedOrder: UnvalidatedOrder ->
+    either {
+        val validatedOrder =
+            validateOrder(checkProductExists, checkAddressExists, unvalidatedOrder)
+                .mapLeft(PlaceOrderError::Validation).bind()
+        val pricedOrder =
+            priceOrder(getProductPrice, validatedOrder)
+                .mapLeft(PlaceOrderError::Pricing).bind()
+        val acknowledgementOption =
+            acknowledgeOrder(createOrderAcknowledgmentLetter, sendOrderAcknowledgment, pricedOrder)
+        val events =
+            createEvents(pricedOrder, acknowledgementOption)
+        events
+    }
+}

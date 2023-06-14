@@ -1,8 +1,7 @@
+﻿package io.github.uharaqo.dmmf.ordertaking.common
+
 // We are defining types and submodules, so we can use a namespace
 // rather than a module at the top level
-namespace OrderTaking.Common
-
-open System
 
 // ==================================
 // Common compound types used throughout the OrderTaking domain
@@ -12,33 +11,32 @@ open System
 //
 // ==================================
 
-
 // ==================================
 // Customer-related types
 // ==================================
 
-type PersonalName = {
-    FirstName : String50
-    LastName : String50
-    }
+data class PersonalName(
+    val firstName: String50,
+    val lastName: String50,
+)
 
-type CustomerInfo = {
-    Name : PersonalName
-    EmailAddress : EmailAddress
-    }
+data class CustomerInfo(
+    val name: PersonalName,
+    val emailAddress: EmailAddress,
+)
 
 // ==================================
 // Address-related
 // ==================================
 
-type Address = {
-    AddressLine1 : String50
-    AddressLine2 : String50 option
-    AddressLine3 : String50 option
-    AddressLine4 : String50 option
-    City : String50
-    ZipCode : ZipCode
-    }
+data class Address(
+    val addressLine1: String50,
+    val addressLine2: String50?,
+    val addressLine3: String50?,
+    val addressLine4: String50?,
+    val city: String50,
+    val zipCode: ZipCode,
+)
 
 // ==================================
 // Product-related types
@@ -47,6 +45,3 @@ type Address = {
 // Note that the definition of a Product is in a different bounded
 // context, and in this context, products are only represented by a ProductCode
 // (see the SimpleTypes module).
-
-
-

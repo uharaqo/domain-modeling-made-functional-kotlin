@@ -1,4 +1,10 @@
-module OrderTaking.PlaceOrder.Api
+﻿package io.github.uharaqo.dmmf.ordertaking.placeorder.api
+
+import arrow.core.Either
+import arrow.core.right
+import io.github.uharaqo.dmmf.ordertaking.common.*
+import io.github.uharaqo.dmmf.ordertaking.placeorder.*
+import io.github.uharaqo.dmmf.ordertaking.placeorder.implementation.*
 
 // ======================================================
 // This file contains the JSON API interface to the PlaceOrder workflow
@@ -8,37 +14,32 @@ module OrderTaking.PlaceOrder.Api
 // 3) The output is turned into a DTO which is turned into a HttpResponse
 // ======================================================
 
+typealias JsonString = String
 
-open OrderTaking.Common
-open OrderTaking.PlaceOrder
+// Very simplified version!
+data class HttpRequest(
+    val action: String,
+    val uri: String,
+    val body: JsonString,
+)
 
+// Very simplified version!
+data class HttpResponse(
+    val httpStatusCode: Int,
+    val body: JsonString,
+)
 
-type JsonString = string
-
-/// Very simplified version!
-type HttpRequest = {
-    Action : string
-    Uri : string
-    Body : JsonString
-    }
-
-/// Very simplified version!
-type HttpResponse = {
-    HttpStatusCode : int
-    Body : JsonString
-    }
-
-/// An API takes a HttpRequest as input and returns a async response
-type PlaceOrderApi = HttpRequest -> Async<HttpResponse>
-
+// An API takes a HttpRequest as input and returns a async response
+fun interface PlaceOrderApi {
+    suspend operator fun invoke(request: HttpRequest): HttpResponse
+}
 
 // =============================
 // JSON serialization
 // =============================
 
-open System.Text.Json
-let serializeJson = JsonSerializer.Serialize
-let deserializeJson<'a> (str:string) = JsonSerializer.Deserialize<'a>(str)
+fun serializeJson(): (Any) -> String = TODO()
+fun <T> deserializeJson(str: String): T = TODO()
 
 // =============================
 // Implementation
@@ -46,86 +47,82 @@ let deserializeJson<'a> (str:string) = JsonSerializer.Deserialize<'a>(str)
 
 // setup dummy dependencies
 
-let internal checkProductExists : Implementation.CheckProductCodeExists =
-    fun productCode ->
-        true // dummy implementation
+private val checkProductExists = CheckProductCodeExists { productCode -> true }
 
-let internal checkAddressExists : Implementation.CheckAddressExists =
-    fun unvalidatedAddress ->
-        let checkedAddress = Implementation.CheckedAddress unvalidatedAddress
-        AsyncResult.retn checkedAddress
+private val checkAddressExists = CheckAddressExists { unvalidatedAddress ->
+    CheckedAddress(unvalidatedAddress).right()
+}
 
-let internal getProductPrice : Implementation.GetProductPrice =
-    fun productCode ->
-        Price.unsafeCreate 1M  // dummy implementation
+private val getProductPrice = GetProductPrice { productCode ->
+    Price.unsafeCreate(1.0) // dummy implementation
+}
 
+private val createOrderAcknowledgmentLetter = CreateOrderAcknowledgmentLetter { pricedOrder ->
+    HtmlString("some text")
+}
 
-let internal createOrderAcknowledgmentLetter : Implementation.CreateOrderAcknowledgmentLetter =
-    fun pricedOrder ->
-        let letterTest = Implementation.HtmlString "some text"
-        letterTest
-
-let internal sendOrderAcknowledgment : Implementation.SendOrderAcknowledgment =
-    fun orderAcknowledgement ->
-        Implementation.Sent
-
+private val sendOrderAcknowledgment = SendOrderAcknowledgment { orderAcknowledgement ->
+    SendResult.Sent
+}
 
 // -------------------------------
 // workflow
 // -------------------------------
 
-/// This function converts the workflow output into a HttpResponse
-let workflowResultToHttpReponse result =
-    match result with
-    | Ok events ->
-        // turn domain events into dtos
-        let dtos =
-            events
-            |> List.map PlaceOrderEventDto.fromDomain
-            |> List.toArray // arrays are json friendly
-        // and serialize to JSON
-        let json = serializeJson(dtos)
-        let response =
-            {
-            HttpStatusCode = 200
-            Body = json
-            }
-        response
-    | Error err ->
-        // turn domain errors into a dto
-        let dto = err |> PlaceOrderErrorDto.fromDomain
-        // and serialize to JSON
-        let json = serializeJson(dto )
-        let response =
-            {
-            HttpStatusCode = 401
-            Body = json
-            }
-        response
+// This function converts the workflow output into a HttpResponse
+val workflowResultToHttpReponse = { result: Either<PlaceOrderError, List<PlaceOrderEvent>> ->
+    result.fold(
+        { err ->
+            // turn domain errors into a dto
+            val dto = err.let(PlaceOrderErrorDto::fromDomain)
+            // and serialize to JSON
+            val json = serializeJson()(dto)
+            val response =
+                HttpResponse(
+                    httpStatusCode = 401,
+                    body = json,
+                )
+            response
+        },
+        { events ->
+            // turn domain events into dtos
+            val dtos =
+                events
+                    .map(PlaceOrderEventDto::fromDomain)
+            // and serialize to JSON
+            val json = serializeJson()(dtos)
+            val response =
+                HttpResponse(
+                    httpStatusCode = 200,
+                    body = json,
+                )
+            response
+        },
+    )
+}
 
-let placeOrderApi : PlaceOrderApi =
-    fun request ->
-        // following the approach in "A Complete Serialization Pipeline" in chapter 11
+val placeOrderApi = PlaceOrderApi { request ->
+    // following the approach in "A Complete Serialization Pipeline" in chapter 11
 
-        // start with a string
-        let orderFormJson = request.Body
-        let orderForm = deserializeJson<OrderFormDto>(orderFormJson)
-        // convert to domain object
-        let unvalidatedOrder = orderForm |> OrderFormDto.toUnvalidatedOrder
+    // start with a string
+    val orderFormJson = request.body
+    val orderForm = deserializeJson<OrderFormDto>(orderFormJson)
+    // convert to domain object
+    val unvalidatedOrder = orderForm.let(OrderFormDto::toUnvalidatedOrder)
 
-        // setup the dependencies. See "Injecting Dependencies" in chapter 9
-        let workflow =
-            Implementation.placeOrder
-                checkProductExists // dependency
-                checkAddressExists // dependency
-                getProductPrice    // dependency
-                createOrderAcknowledgmentLetter  // dependency
-                sendOrderAcknowledgment // dependency
+    // setup the dependencies. See "Injecting Dependencies" in chapter 9
+    val workflow =
+        placeOrder(
+            checkProductExists, // dependency
+            checkAddressExists, // dependency
+            getProductPrice, // dependency
+            createOrderAcknowledgmentLetter, // dependency
+            sendOrderAcknowledgment, // dependency
+        )
 
-        // now we are in the pure domain
-        let asyncResult = workflow unvalidatedOrder
+    // now we are in the pure domain
+    val asyncResult = workflow(unvalidatedOrder)
 
-        // now convert from the pure domain back to a HttpResponse
-        asyncResult
-        |> Async.map (workflowResultToHttpReponse)
-
+    // now convert from the pure domain back to a HttpResponse
+    asyncResult.let(workflowResultToHttpReponse)
+}
