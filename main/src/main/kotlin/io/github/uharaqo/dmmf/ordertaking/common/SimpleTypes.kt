@@ -17,14 +17,14 @@ value class String50(val value: String) {
     companion object {
         // Create an String50 from a string
         // Return Error if input is null, empty, or length > 50
-        fun create(fieldName: String, str: String): Either<String, String50> =
+        operator fun invoke(fieldName: String, str: String): Either<String, String50> =
             ConstrainedType.createString(fieldName, ::String50, 50, str)
 
         // Create an String50 from a string
         // Return None if input is null, empty.
         // Return error if length > maxLen
         // Return Some if the input is valid
-        fun createOption(fieldName: String, str: String): Either<String, String50?> =
+        fun optional(fieldName: String, str: String): Either<String, String50?> =
             ConstrainedType.createStringOption(fieldName, ::String50, 50, str)
     }
 }
@@ -37,7 +37,7 @@ value class EmailAddress(val value: String) {
 
         // Create an EmailAddress from a string
         // Return Error if input is null, empty, or doesn't have an "@" in it
-        fun create(fieldName: String, str: String): Either<String, EmailAddress> =
+        operator fun invoke(fieldName: String, str: String): Either<String, EmailAddress> =
             ConstrainedType.createLike(fieldName, ::EmailAddress, pattern, str) // anything separated by an "@"
     }
 }
@@ -58,7 +58,7 @@ enum class VipStatus {
 
         //  Create a VipStatus from a string
         //  Return Error if input is null, empty, or doesn't match one of the cases
-        fun create(fieldName: String, str: String): Either<String, VipStatus> =
+        operator fun invoke(fieldName: String, str: String): Either<String, VipStatus> =
             when (str) {
                 "normal", "Normal" -> Normal.right()
                 "vip", "VIP" -> Vip.right()
@@ -75,7 +75,7 @@ value class ZipCode(val value: String) {
 
         // Create a ZipCode from a string
         // Return Error if input is null, empty, or doesn't have 5 digits
-        fun create(fieldName: String, str: String): Either<String, ZipCode> =
+        operator fun invoke(fieldName: String, str: String): Either<String, ZipCode> =
             ConstrainedType.createLike(fieldName, ::ZipCode, pattern, str)
     }
 }
@@ -89,7 +89,7 @@ value class UsStateCode(val value: String) {
 
         //  Create a UsStateCode from a string
         //  Return Error if input is null, empty, or doesn't have 2 letters
-        fun create(fieldName: String, str: String): Either<String, UsStateCode> =
+        operator fun invoke(fieldName: String, str: String): Either<String, UsStateCode> =
             ConstrainedType.createLike(fieldName, ::UsStateCode, pattern, str)
     }
 }
@@ -100,7 +100,7 @@ value class OrderId(val value: String) {
     companion object {
         // Create an OrderId from a string
         // Return Error if input is null, empty, or length > 50
-        fun create(fieldName: String, str: String): Either<String, OrderId> =
+        operator fun invoke(fieldName: String, str: String): Either<String, OrderId> =
             ConstrainedType.createString(fieldName, ::OrderId, 50, str)
     }
 }
@@ -112,7 +112,7 @@ value class OrderLineId(val value: String) {
     companion object {
         // Create an OrderLineId from a string
         // Return Error if input is null, empty, or length > 50
-        fun create(fieldName: String, str: String): Either<String, OrderLineId> =
+        operator fun invoke(fieldName: String, str: String): Either<String, OrderLineId> =
             ConstrainedType.createString(fieldName, ::OrderLineId, 50, str)
     }
 }
@@ -126,7 +126,7 @@ value class WidgetCode(val value: String) {
 
         // Create an WidgetCode from a string
         // Return Error if input is null. empty, or not matching pattern
-        fun create(fieldName: String, code: String): Either<String, WidgetCode> =
+        operator fun invoke(fieldName: String, code: String): Either<String, WidgetCode> =
             // The codes for Widgets start with a "W" and then four digits
             ConstrainedType.createLike(fieldName, ::WidgetCode, pattern, code)
     }
@@ -140,7 +140,7 @@ value class GizmoCode(val value: String) {
 
         // Create an GizmoCode from a string
         // Return Error if input is null, empty, or not matching pattern
-        fun create(fieldName: String, code: String): Either<String, GizmoCode> =
+        operator fun invoke(fieldName: String, code: String): Either<String, GizmoCode> =
             // The codes for Gizmos start with a "G" and then three digits.
             ConstrainedType.createLike(fieldName, ::GizmoCode, pattern, code)
     }
@@ -163,14 +163,14 @@ sealed interface ProductCode {
 
         // Create an ProductCode from a string
         // Return Error if input is null, empty, or not matching pattern
-        fun create(fieldName: String, code: String?): Either<String, ProductCode> =
+        operator fun invoke(fieldName: String, code: String?): Either<String, ProductCode> =
             if (code.isNullOrEmpty()) {
                 "$fieldName: Must not be null or empty".left()
             } else if (code.startsWith("W")) {
-                WidgetCode.create(fieldName, code)
+                WidgetCode(fieldName, code)
                     .map(::Widget)
             } else if (code.startsWith("G")) {
-                GizmoCode.create(fieldName, code)
+                GizmoCode(fieldName, code)
                     .map(::Gizmo)
             } else {
                 "$fieldName: Format not recognized '$code'".left()
@@ -184,7 +184,7 @@ value class UnitQuantity(val value: Int) {
     companion object {
         // Create a UnitQuantity from a int
         // Return Error if input is not an integer between 1 and 1000
-        fun create(fieldName: String, v: Int): Either<String, UnitQuantity> =
+        operator fun invoke(fieldName: String, v: Int): Either<String, UnitQuantity> =
             ConstrainedType.createInt(fieldName, ::UnitQuantity, 1, 1000, v)
     }
 }
@@ -195,7 +195,7 @@ value class KilogramQuantity(val value: Double) {
     companion object {
         // Create a KilogramQuantity from a decimal.
         // Return Error if input is not a decimal between 0.05 and 100.00
-        fun create(fieldName: String, v: Double): Either<String, KilogramQuantity> =
+        operator fun invoke(fieldName: String, v: Double): Either<String, KilogramQuantity> =
             ConstrainedType.createDecimal(fieldName, ::KilogramQuantity, 0.05, 100.00, v)
     }
 }
@@ -218,14 +218,14 @@ sealed interface OrderQuantity {
             }
 
         // Create a OrderQuantity from a productCode and quantity
-        fun create(fieldName: String, productCode: ProductCode, quantity: Double): Either<String, OrderQuantity> =
+        operator fun invoke(fieldName: String, productCode: ProductCode, quantity: Double): Either<String, OrderQuantity> =
             when (productCode) {
                 is ProductCode.Gizmo ->
-                    UnitQuantity.create(fieldName, quantity.toInt())
+                    UnitQuantity(fieldName, quantity.toInt())
                         .map(OrderQuantity::Unit)
 
                 is ProductCode.Widget ->
-                    KilogramQuantity.create(fieldName, quantity)
+                    KilogramQuantity(fieldName, quantity)
                         .map(OrderQuantity::Kilogram)
             }
     }
@@ -237,19 +237,19 @@ value class Price(val value: Double) {
     companion object {
         // Create a Price from a decimal.
         // Return Error if input is not a decimal between 0.0 and 1000.00
-        fun create(v: Double): Either<String, Price> =
+        operator fun invoke(v: Double): Either<String, Price> =
             ConstrainedType.createDecimal("Price", ::Price, 0.0, 1000.00, v)
 
         // Create a Price from a decimal.
         // Throw an exception if out of bounds. This should only be used if you know the value is valid.
         fun unsafeCreate(v: Double): Price =
-            create(v)
+            invoke(v)
                 .fold({ err -> throw RuntimeException("Not expecting Price to be out of bounds: $err") }, { it })
 
         // Multiply a Price by a decimal qty.
         // Return Error if new price is out of bounds.
         fun multiply(qty: Double, p: Price): Either<String, Price> =
-            create(qty * p.value)
+            invoke(qty * p.value)
     }
 }
 
@@ -259,14 +259,14 @@ value class BillingAmount(val value: Double) {
     companion object {
         // Create a BillingAmount from a decimal.
         // Return Error if input is not a decimal between 0.0 and 10000.00
-        fun create(v: Double): Either<String, BillingAmount> =
+        operator fun invoke(v: Double): Either<String, BillingAmount> =
             ConstrainedType.createDecimal("BillingAmount", ::BillingAmount, 0.0, 10000.0, v)
 
         // Sum a list of prices to make a billing amount
         // Return Error if total is out of bounds
         fun sumPrices(prices: List<Price>): Either<String, BillingAmount> {
             val total = prices.map(Price::value).sum()
-            return create(total)
+            return invoke(total)
         }
     }
 }

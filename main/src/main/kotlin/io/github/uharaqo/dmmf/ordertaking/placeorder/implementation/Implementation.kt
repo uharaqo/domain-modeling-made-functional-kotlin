@@ -237,16 +237,16 @@ fun toCustomerInfo(unvalidatedCustomerInfo: UnvalidatedCustomerInfo): Either<Val
     either {
         val firstName =
             unvalidatedCustomerInfo.firstName
-                .let(String50.Companion::create.partially1("FirstName")).bind()
+                .let(String50.Companion::invoke.partially1("FirstName")).bind()
         val lastName =
             unvalidatedCustomerInfo.lastName
-                .let(String50.Companion::create.partially1("LastName")).bind()
+                .let(String50.Companion::invoke.partially1("LastName")).bind()
         val emailAddress =
             unvalidatedCustomerInfo.emailAddress
-                .let(EmailAddress.Companion::create.partially1("EmailAddress")).bind()
+                .let(EmailAddress.Companion::invoke.partially1("EmailAddress")).bind()
         val vipStatus =
             unvalidatedCustomerInfo.vipStatus
-                .let(VipStatus.Companion::create.partially1("vipStatus")).bind()
+                .let(VipStatus.Companion::invoke.partially1("vipStatus")).bind()
         val customerInfo = CustomerInfo(
             name = PersonalName(firstName = firstName, lastName = lastName),
             emailAddress = emailAddress,
@@ -260,28 +260,28 @@ fun toAddress(checkedAddress: CheckedAddress): Either<ValidationError, Address> 
         val addr = checkedAddress.value
         val addressLine1 =
             addr.addressLine1
-                .let(String50.Companion::create.partially1("AddressLine1")).bind()
+                .let(String50.Companion::invoke.partially1("AddressLine1")).bind()
         val addressLine2 =
             addr.addressLine2
-                .let(String50.Companion::createOption.partially1("AddressLine2")).bind()
+                .let(String50.Companion::optional.partially1("AddressLine2")).bind()
         val addressLine3 =
             addr.addressLine3
-                .let(String50.Companion::createOption.partially1("AddressLine3")).bind()
+                .let(String50.Companion::optional.partially1("AddressLine3")).bind()
         val addressLine4 =
             addr.addressLine4
-                .let(String50.Companion::createOption.partially1("AddressLine4")).bind()
+                .let(String50.Companion::optional.partially1("AddressLine4")).bind()
         val city =
             addr.city
-                .let(String50.Companion::create.partially1("City")).bind()
+                .let(String50.Companion::invoke.partially1("City")).bind()
         val zipCode =
             addr.zipCode
-                .let(ZipCode.Companion::create.partially1("ZipCode")).bind()
+                .let(ZipCode.Companion::invoke.partially1("ZipCode")).bind()
         val state =
             addr.state
-                .let(UsStateCode.Companion::create.partially1("State")).bind()
+                .let(UsStateCode.Companion::invoke.partially1("State")).bind()
         val country =
             addr.country
-                .let(String50.Companion::create.partially1("Country")).bind()
+                .let(String50.Companion::invoke.partially1("Country")).bind()
         val address = Address(
             addressLine1 = addressLine1,
             addressLine2 = addressLine2,
@@ -311,13 +311,13 @@ suspend fun toCheckedAddress(
 
 fun toOrderId(orderId: String): Either<ValidationError, OrderId> =
     orderId
-        .let(OrderId.Companion::create.partially1("OrderId"))
+        .let(OrderId.Companion::invoke.partially1("OrderId"))
         .mapLeft(::ValidationError)
 
 // Helper function for validateOrder
 fun toOrderLineId(orderId: String): Either<ValidationError, OrderLineId> =
     orderId
-        .let(OrderLineId.Companion::create.partially1("OrderLineId"))
+        .let(OrderLineId.Companion::invoke.partially1("OrderLineId"))
         .mapLeft(::ValidationError)
 
 // Helper function for validateOrder
@@ -337,14 +337,14 @@ fun toProductCode(
 
     // assemble the pipeline
     return productCode
-        .let(ProductCode.Companion::create.partially1("ProductCode"))
+        .let(ProductCode.Companion::invoke.partially1("ProductCode"))
         .mapLeft(::ValidationError)
         .flatMap { checkProduct(it) }
 }
 
 // Helper function for validateOrder
 fun toOrderQuantity(productCode: ProductCode, quantity: Double): Either<ValidationError, OrderQuantity> =
-    OrderQuantity.create("OrderQuantity", productCode, quantity)
+    OrderQuantity.invoke("OrderQuantity", productCode, quantity)
         .mapLeft(::ValidationError)
 
 // Helper function for validateOrder

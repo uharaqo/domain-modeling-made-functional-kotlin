@@ -49,10 +49,10 @@ data class CustomerInfoDto(
         fun toCustomerInfo(dto: CustomerInfoDto): Either<String, CustomerInfo> =
             either {
                 // get each (validated) simple type from the DTO as a success or failure
-                val first = dto.firstName.let(String50.Companion::create.partially1("FirstName")).bind()
-                val last = dto.lastName.let(String50.Companion::create.partially1("LastName")).bind()
-                val email = dto.emailAddress.let(EmailAddress.Companion::create.partially1("EmailAddress")).bind()
-                val vipStatus = dto.vipStatus.let(VipStatus.Companion::create.partially1("VipStatus")).bind()
+                val first = dto.firstName.let(String50.Companion::invoke.partially1("FirstName")).bind()
+                val last = dto.lastName.let(String50.Companion::invoke.partially1("LastName")).bind()
+                val email = dto.emailAddress.let(EmailAddress.Companion::invoke.partially1("EmailAddress")).bind()
+                val vipStatus = dto.vipStatus.let(VipStatus.Companion::invoke.partially1("VipStatus")).bind()
                 // combine the components to create the domain object
                 val name = PersonalName(firstName = first, lastName = last)
                 val info = CustomerInfo(name = name, emailAddress = email, vipStatus = vipStatus)
@@ -109,17 +109,17 @@ data class AddressDto(
             either {
                 // get each (validated) simple type from the DTO as a success or failure
                 val addressLine1 =
-                    dto.addressLine1.let(String50.Companion::create.partially1("AddressLine1")).bind()
+                    dto.addressLine1.let(String50.Companion::invoke.partially1("AddressLine1")).bind()
                 val addressLine2 =
-                    dto.addressLine2.let(String50.Companion::createOption.partially1("AddressLine2")).bind()
+                    dto.addressLine2.let(String50.Companion::optional.partially1("AddressLine2")).bind()
                 val addressLine3 =
-                    dto.addressLine3.let(String50.Companion::createOption.partially1("AddressLine3")).bind()
+                    dto.addressLine3.let(String50.Companion::optional.partially1("AddressLine3")).bind()
                 val addressLine4 =
-                    dto.addressLine4.let(String50.Companion::createOption.partially1("AddressLine4")).bind()
-                val city = dto.city.let(String50.Companion::create.partially1("City")).bind()
-                val zipCode = dto.zipCode.let(ZipCode.Companion::create.partially1("ZipCode")).bind()
-                val state = dto.state.let(UsStateCode.Companion::create.partially1("State")).bind()
-                val country = dto.country.let(String50.Companion::create.partially1("Country")).bind()
+                    dto.addressLine4.let(String50.Companion::optional.partially1("AddressLine4")).bind()
+                val city = dto.city.let(String50.Companion::invoke.partially1("City")).bind()
+                val zipCode = dto.zipCode.let(ZipCode.Companion::invoke.partially1("ZipCode")).bind()
+                val state = dto.state.let(UsStateCode.Companion::invoke.partially1("State")).bind()
+                val country = dto.country.let(String50.Companion::invoke.partially1("Country")).bind()
 
                 // combine the components to create the domain object
                 val address = Address(
