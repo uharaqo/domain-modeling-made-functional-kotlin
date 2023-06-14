@@ -49,10 +49,10 @@ data class CustomerInfoDto(
         fun toCustomerInfo(dto: CustomerInfoDto): Either<String, CustomerInfo> =
             either {
                 // get each (validated) simple type from the DTO as a success or failure
-                val first = dto.firstName.let(String50.Companion::invoke.partially1("FirstName")).bind()
-                val last = dto.lastName.let(String50.Companion::invoke.partially1("LastName")).bind()
-                val email = dto.emailAddress.let(EmailAddress.Companion::invoke.partially1("EmailAddress")).bind()
-                val vipStatus = dto.vipStatus.let(VipStatus.Companion::invoke.partially1("VipStatus")).bind()
+                val first = String50("FirstName", dto.firstName).bind()
+                val last = String50("LastName", dto.lastName).bind()
+                val email = EmailAddress("EmailAddress", dto.emailAddress).bind()
+                val vipStatus = VipStatus("VipStatus", dto.vipStatus).bind()
                 // combine the components to create the domain object
                 val name = PersonalName(firstName = first, lastName = last)
                 val info = CustomerInfo(name = name, emailAddress = email, vipStatus = vipStatus)
@@ -64,9 +64,9 @@ data class CustomerInfoDto(
         fun fromCustomerInfo(domainObj: CustomerInfo): CustomerInfoDto =
             // this is a simple 1:1 copy
             CustomerInfoDto(
-                firstName = domainObj.name.firstName.let(String50::value),
-                lastName = domainObj.name.lastName.let(String50::value),
-                emailAddress = domainObj.emailAddress.let(EmailAddress::value),
+                firstName = domainObj.name.firstName.value,
+                lastName = domainObj.name.lastName.value,
+                emailAddress = domainObj.emailAddress.value,
                 vipStatus = domainObj.vipStatus.let(VipStatus::value),
             )
     }
@@ -108,18 +108,14 @@ data class AddressDto(
         fun toAddress(dto: AddressDto): Either<String, Address> =
             either {
                 // get each (validated) simple type from the DTO as a success or failure
-                val addressLine1 =
-                    dto.addressLine1.let(String50.Companion::invoke.partially1("AddressLine1")).bind()
-                val addressLine2 =
-                    dto.addressLine2.let(String50.Companion::optional.partially1("AddressLine2")).bind()
-                val addressLine3 =
-                    dto.addressLine3.let(String50.Companion::optional.partially1("AddressLine3")).bind()
-                val addressLine4 =
-                    dto.addressLine4.let(String50.Companion::optional.partially1("AddressLine4")).bind()
-                val city = dto.city.let(String50.Companion::invoke.partially1("City")).bind()
-                val zipCode = dto.zipCode.let(ZipCode.Companion::invoke.partially1("ZipCode")).bind()
-                val state = dto.state.let(UsStateCode.Companion::invoke.partially1("State")).bind()
-                val country = dto.country.let(String50.Companion::invoke.partially1("Country")).bind()
+                val addressLine1 = String50("AddressLine1", dto.addressLine1).bind()
+                val addressLine2 = String50.optional("AddressLine2", dto.addressLine2).bind()
+                val addressLine3 = String50.optional("AddressLine3", dto.addressLine3).bind()
+                val addressLine4 = String50.optional("AddressLine4", dto.addressLine4).bind()
+                val city = String50("City", dto.city).bind()
+                val zipCode = ZipCode("ZipCode", dto.zipCode).bind()
+                val state = UsStateCode("State", dto.state).bind()
+                val country = String50("Country", dto.country).bind()
 
                 // combine the components to create the domain object
                 val address = Address(
@@ -140,14 +136,14 @@ data class AddressDto(
         fun fromAddress(domainObj: Address): AddressDto =
             // this is a simple 1:1 copy
             AddressDto(
-                addressLine1 = domainObj.addressLine1.let(String50::value),
-                addressLine2 = domainObj.addressLine2?.let(String50::value)!!,
-                addressLine3 = domainObj.addressLine3?.let(String50::value)!!,
-                addressLine4 = domainObj.addressLine4?.let(String50::value)!!,
-                city = domainObj.city.let(String50::value),
-                zipCode = domainObj.zipCode.let(ZipCode::value),
-                state = domainObj.state.let(UsStateCode::value),
-                country = domainObj.country.let(String50::value),
+                addressLine1 = domainObj.addressLine1.value,
+                addressLine2 = domainObj.addressLine2!!.value,
+                addressLine3 = domainObj.addressLine3!!.value,
+                addressLine4 = domainObj.addressLine4!!.value,
+                city = domainObj.city.value,
+                zipCode = domainObj.zipCode.value,
+                state = domainObj.state.value,
+                country = domainObj.country.value,
             )
     }
 
@@ -196,10 +192,10 @@ data class PricedOrderLineDto(
                 is PricedOrderLine.ProductLine ->
                     // this is a simple 1:1 copy
                     PricedOrderLineDto(
-                        orderLineId = domainObj.value.orderLineId.let(OrderLineId::value),
+                        orderLineId = domainObj.value.orderLineId.value,
                         productCode = domainObj.value.productCode.let(ProductCode::value),
                         quantity = domainObj.value.quantity.let(OrderQuantity::value),
-                        linePrice = domainObj.value.linePrice.let(Price::value),
+                        linePrice = domainObj.value.linePrice.value,
                         comment = "",
                     )
 
@@ -268,7 +264,7 @@ data class ShippableOrderPlacedDto(
         // Used when exporting from the domain to the outside world.
         fun fromDomain(domainObj: ShippableOrderPlaced): ShippableOrderPlacedDto =
             ShippableOrderPlacedDto(
-                orderId = domainObj.orderId.let(OrderId::value),
+                orderId = domainObj.orderId.value,
                 shippingAddress = domainObj.shippingAddress.let(AddressDto::fromAddress),
                 shipmentLines = domainObj.shipmentLines.map(::fromShippableOrderLine),
                 pdf = domainObj.pdf,
@@ -291,7 +287,7 @@ data class BillableOrderPlacedDto(
         // Used when exporting from the domain to the outside world.
         fun fromDomain(domainObj: BillableOrderPlaced): BillableOrderPlacedDto =
             BillableOrderPlacedDto(
-                orderId = domainObj.orderId.let(OrderId::value),
+                orderId = domainObj.orderId.value,
                 billingAddress = domainObj.billingAddress.let(AddressDto::fromAddress),
                 amountToBill = domainObj.amountToBill.let(BillingAmount::value),
             )
@@ -312,8 +308,8 @@ data class OrderAcknowledgmentSentDto(
         // Used when exporting from the domain to the outside world.
         fun fromDomain(domainObj: OrderAcknowledgmentSent): OrderAcknowledgmentSentDto =
             OrderAcknowledgmentSentDto(
-                orderId = domainObj.orderId.let(OrderId::value),
-                emailAddress = domainObj.emailAddress.let(EmailAddress::value),
+                orderId = domainObj.orderId.value,
+                emailAddress = domainObj.emailAddress.value,
             )
     }
 }
