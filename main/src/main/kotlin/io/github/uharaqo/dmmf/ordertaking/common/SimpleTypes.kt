@@ -42,6 +42,31 @@ value class EmailAddress(val value: String) {
     }
 }
 
+// Customer's VIP status
+enum class VipStatus {
+    Normal,
+    Vip,
+    ;
+
+    companion object {
+        //  Return a string representation of VipStatus
+        fun value(status: VipStatus): String =
+            when (status) {
+                Normal -> "Normal"
+                Vip -> "VIP"
+            }
+
+        //  Create a VipStatus from a string
+        //  Return Error if input is null, empty, or doesn't match one of the cases
+        fun create(fieldName: String, str: String): Either<String, VipStatus> =
+            when (str) {
+                "normal", "Normal" -> Normal.right()
+                "vip", "VIP" -> Vip.right()
+                else -> "$fieldName: Must be one of 'Normal', 'VIP'".left()
+            }
+    }
+}
+
 // A zip code
 @JvmInline
 value class ZipCode(val value: String) {
@@ -52,6 +77,20 @@ value class ZipCode(val value: String) {
         // Return Error if input is null, empty, or doesn't have 5 digits
         fun create(fieldName: String, str: String): Either<String, ZipCode> =
             ConstrainedType.createLike(fieldName, ::ZipCode, pattern, str)
+    }
+}
+
+// A US 2 letter state code
+@JvmInline
+value class UsStateCode(val value: String) {
+    companion object {
+        private const val pattern =
+            "^(A[KLRZ]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|P[AR]|RI|S[CD]|T[NX]|UT|V[AIT]|W[AIVY])$"
+
+        //  Create a UsStateCode from a string
+        //  Return Error if input is null, empty, or doesn't have 2 letters
+        fun create(fieldName: String, str: String): Either<String, UsStateCode> =
+            ConstrainedType.createLike(fieldName, ::UsStateCode, pattern, str)
     }
 }
 
@@ -237,6 +276,9 @@ data class PdfAttachment(
     val name: String,
     val bytes: ByteArray,
 )
+
+@JvmInline
+value class PromotionCode(val value: String)
 
 // ===============================
 // Reusable constructors and getters for constrained types
