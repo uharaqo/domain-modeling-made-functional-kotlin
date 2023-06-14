@@ -1,8 +1,11 @@
+﻿package io.github.uharaqo.dmmf.ordertaking.placeorder
+
+import arrow.core.Either
+import io.github.uharaqo.dmmf.ordertaking.common.*
+import java.net.URI
+
 // We are defining types and submodules, so we can use a namespace
 // rather than a module at the top level
-namespace OrderTaking.PlaceOrder
-
-open OrderTaking.Common
 
 // ==================================
 // This file contains the definitions of PUBLIC types (exposed at the boundary of the bounded context)
@@ -12,114 +15,120 @@ open OrderTaking.Common
 // ------------------------------------
 // inputs to the workflow
 
-type UnvalidatedCustomerInfo = {
-    FirstName : string
-    LastName : string
-    EmailAddress : string
-    }
+data class UnvalidatedCustomerInfo(
+    val firstName: String,
+    val lastName: String,
+    val emailAddress: String,
+)
 
-type UnvalidatedAddress = {
-    AddressLine1 : string
-    AddressLine2 : string
-    AddressLine3 : string
-    AddressLine4 : string
-    City : string
-    ZipCode : string
-    }
+data class UnvalidatedAddress(
+    val addressLine1: String,
+    val addressLine2: String,
+    val addressLine3: String,
+    val addressLine4: String,
+    val city: String,
+    val zipCode: String,
+)
 
-type UnvalidatedOrderLine =  {
-    OrderLineId : string
-    ProductCode : string
-    Quantity : decimal
-    }
+data class UnvalidatedOrderLine(
+    val orderLineId: String,
+    val productCode: String,
+    val quantity: Double,
+)
 
-type UnvalidatedOrder = {
-    OrderId : string
-    CustomerInfo : UnvalidatedCustomerInfo
-    ShippingAddress : UnvalidatedAddress
-    BillingAddress : UnvalidatedAddress
-    Lines : UnvalidatedOrderLine list
-    }
-
+data class UnvalidatedOrder(
+    val orderId: String,
+    val customerInfo: UnvalidatedCustomerInfo,
+    val shippingAddress: UnvalidatedAddress,
+    val billingAddress: UnvalidatedAddress,
+    val lines: List<UnvalidatedOrderLine>,
+)
 
 // ------------------------------------
 // outputs from the workflow (success case)
 
-/// Event will be created if the Acknowledgment was successfully posted
-type OrderAcknowledgmentSent = {
-    OrderId : OrderId
-    EmailAddress : EmailAddress
-    }
-
+// Event will be created if the Acknowledgment was successfully posted
+data class OrderAcknowledgmentSent(
+    val orderId: OrderId,
+    val emailAddress: EmailAddress,
+)
 
 // priced state
-type PricedOrderLine = {
-    OrderLineId : OrderLineId
-    ProductCode : ProductCode
-    Quantity : OrderQuantity
-    LinePrice : Price
-    }
+data class PricedOrderLine(
+    val orderLineId: OrderLineId,
+    val productCode: ProductCode,
+    val quantity: OrderQuantity,
+    val linePrice: Price,
+)
 
-type PricedOrder = {
-    OrderId : OrderId
-    CustomerInfo : CustomerInfo
-    ShippingAddress : Address
-    BillingAddress : Address
-    AmountToBill : BillingAmount
-    Lines : PricedOrderLine list
-    }
+data class PricedOrder(
+    val orderId: OrderId,
+    val customerInfo: CustomerInfo,
+    val shippingAddress: Address,
+    val billingAddress: Address,
+    val amountToBill: BillingAmount,
+    val lines: List<PricedOrderLine>,
+)
 
-/// Event to send to shipping context
-type OrderPlaced = PricedOrder
+// Event to send to shipping context
+typealias OrderPlaced = PricedOrder
 
-/// Event to send to billing context
-/// Will only be created if the AmountToBill is not zero
-type BillableOrderPlaced = {
-    OrderId : OrderId
-    BillingAddress: Address
-    AmountToBill : BillingAmount
-    }
+// Event to send to billing context
+// Will only be created if the AmountToBill is not zero
+data class BillableOrderPlaced(
+    val orderId: OrderId,
+    val billingAddress: Address,
+    val amountToBill: BillingAmount,
+)
 
-/// The possible events resulting from the PlaceOrder workflow
-/// Not all events will occur, depending on the logic of the workflow
-type PlaceOrderEvent =
-    | OrderPlaced of OrderPlaced
-    | BillableOrderPlaced of BillableOrderPlaced
-    | AcknowledgmentSent  of OrderAcknowledgmentSent
+// The possible events resulting from the PlaceOrder workflow
+// Not all events will occur, depending on the logic of the workflow
+sealed interface PlaceOrderEvent {
+    @JvmInline
+    value class OrderPlaced(val value: io.github.uharaqo.dmmf.ordertaking.placeorder.OrderPlaced) : PlaceOrderEvent
 
+    @JvmInline
+    value class BillableOrderPlaced(val value: io.github.uharaqo.dmmf.ordertaking.placeorder.BillableOrderPlaced) :
+        PlaceOrderEvent
 
+    @JvmInline
+    value class AcknowledgmentSent(val value: io.github.uharaqo.dmmf.ordertaking.placeorder.OrderAcknowledgmentSent) : PlaceOrderEvent
+}
 
 // ------------------------------------
 // error outputs
 
+// All the things that can go wrong in this workflow
+@JvmInline
+value class ValidationError(val value: String)
 
-/// All the things that can go wrong in this workflow
-type ValidationError = ValidationError of string
+@JvmInline
+value class PricingError(val value: String)
 
-type PricingError = PricingError of string
+data class ServiceInfo(
+    val name: String,
+    val endpoint: URI,
+)
 
-type ServiceInfo = {
-    Name : string
-    Endpoint: System.Uri
-    }
+data class RemoteServiceError(
+    val service: ServiceInfo,
+    val exception: Exception,
+)
 
-type RemoteServiceError = {
-    Service : ServiceInfo
-    Exception : System.Exception
-    }
+sealed interface PlaceOrderError {
+    @JvmInline
+    value class Validation(val value: ValidationError) : PlaceOrderError
 
-type PlaceOrderError =
-    | Validation of ValidationError
-    | Pricing of PricingError
-    | RemoteService of RemoteServiceError
+    @JvmInline
+    value class Pricing(val value: PricingError) : PlaceOrderError
 
+    @JvmInline
+    value class RemoteService(val value: RemoteServiceError) : PlaceOrderError
+}
 
 // ------------------------------------
 // the workflow itself
 
-type PlaceOrder =
-    UnvalidatedOrder -> AsyncResult<PlaceOrderEvent list,PlaceOrderError>
-
-
-
-
+fun interface PlaceOrder {
+    suspend operator fun invoke(unvalidatedOrder: UnvalidatedOrder): Either<PlaceOrderError, List<PlaceOrderEvent>>
+}
