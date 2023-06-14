@@ -7,7 +7,7 @@ import io.github.uharaqo.dmmf.ordertaking.placeorder.*
 import io.github.uharaqo.dmmf.ordertaking.placeorder.implementation.*
 
 // ======================================================
-// This file contains the JSON API interface to the PlaceOrder workflow
+// This file contains the complete workflow, exposed as a JSON API
 //
 // 1) The HttpRequest is turned into a DTO, which is then turned into a Domain object
 // 2) The main workflow function is called
@@ -53,9 +53,44 @@ private val checkAddressExists = CheckAddressExists { unvalidatedAddress ->
     CheckedAddress(unvalidatedAddress).right()
 }
 
-private val getProductPrice = GetProductPrice { productCode ->
-    Price.unsafeCreate(1.0) // dummy implementation
+private val getStandardPrices = GetStandardPrices {
+    GetProductPrice { productCode ->
+        Price.unsafeCreate(10.0)
+    }
 }
+
+private val getPromotionPrices: (PromotionCode) -> TryGetProductPrice = { promotionCode: PromotionCode ->
+    val halfPricePromotion =
+        TryGetProductPrice { productCode ->
+            if (ProductCode.value(productCode) == "ONSALE") {
+                Price.unsafeCreate(5.0)
+            } else {
+                null
+            }
+        }
+
+    val quarterPricePromotion = TryGetProductPrice { productCode ->
+        if (ProductCode.value(productCode) == "ONSALE") {
+            Price.unsafeCreate(2.5)
+        } else {
+            null
+        }
+    }
+
+    val noPromotion = TryGetProductPrice { productCode -> null }
+
+    when (promotionCode.value) {
+        "HALF" -> halfPricePromotion
+        "QUARTER" -> quarterPricePromotion
+        else -> noPromotion
+    }
+}
+
+private val getPricingFunction: GetPricingFunction =
+    Pricing.getPricingFunction(getStandardPrices, getPromotionPrices)
+
+private val calculateShippingCost =
+    io.github.uharaqo.dmmf.ordertaking.placeorder.implementation.calculateShippingCost
 
 private val createOrderAcknowledgmentLetter = CreateOrderAcknowledgmentLetter { pricedOrder ->
     HtmlString("some text")
@@ -115,7 +150,8 @@ val placeOrderApi = PlaceOrderApi { request ->
         placeOrder(
             checkProductExists, // dependency
             checkAddressExists, // dependency
-            getProductPrice, // dependency
+            getPricingFunction, // dependency
+            calculateShippingCost, // dependency
             createOrderAcknowledgmentLetter, // dependency
             sendOrderAcknowledgment, // dependency
         )

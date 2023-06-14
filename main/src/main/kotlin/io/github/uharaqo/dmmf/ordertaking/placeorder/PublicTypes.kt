@@ -2,6 +2,7 @@
 
 import arrow.core.Either
 import io.github.uharaqo.dmmf.ordertaking.common.*
+import io.github.uharaqo.dmmf.ordertaking.placeorder.implementation.*
 import java.net.URI
 
 // We are defining types and submodules, so we can use a namespace
@@ -19,6 +20,7 @@ data class UnvalidatedCustomerInfo(
     val firstName: String,
     val lastName: String,
     val emailAddress: String,
+    val vipStatus: String,
 )
 
 data class UnvalidatedAddress(
@@ -28,6 +30,8 @@ data class UnvalidatedAddress(
     val addressLine4: String,
     val city: String,
     val zipCode: String,
+    val state: String,
+    val country: String,
 )
 
 data class UnvalidatedOrderLine(
@@ -42,6 +46,7 @@ data class UnvalidatedOrder(
     val shippingAddress: UnvalidatedAddress,
     val billingAddress: UnvalidatedAddress,
     val lines: List<UnvalidatedOrderLine>,
+    val promotionCode: String,
 )
 
 // ------------------------------------
@@ -54,20 +59,16 @@ data class OrderAcknowledgmentSent(
 )
 
 // priced state
-data class PricedOrderLine(
-    val orderLineId: OrderLineId,
+data class ShippableOrderLine(
     val productCode: ProductCode,
     val quantity: OrderQuantity,
-    val linePrice: Price,
 )
 
-data class PricedOrder(
+data class ShippableOrderPlaced(
     val orderId: OrderId,
-    val customerInfo: CustomerInfo,
     val shippingAddress: Address,
-    val billingAddress: Address,
-    val amountToBill: BillingAmount,
-    val lines: List<PricedOrderLine>,
+    val shipmentLines: List<ShippableOrderLine>,
+    val pdf: PdfAttachment,
 )
 
 // Event to send to shipping context
@@ -85,7 +86,7 @@ data class BillableOrderPlaced(
 // Not all events will occur, depending on the logic of the workflow
 sealed interface PlaceOrderEvent {
     @JvmInline
-    value class OrderPlaced(val value: io.github.uharaqo.dmmf.ordertaking.placeorder.OrderPlaced) : PlaceOrderEvent
+    value class ShippableOrderPlaced(val value: io.github.uharaqo.dmmf.ordertaking.placeorder.ShippableOrderPlaced) : PlaceOrderEvent
 
     @JvmInline
     value class BillableOrderPlaced(val value: io.github.uharaqo.dmmf.ordertaking.placeorder.BillableOrderPlaced) :

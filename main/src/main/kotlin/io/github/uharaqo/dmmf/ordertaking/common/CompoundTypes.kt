@@ -23,6 +23,7 @@ data class PersonalName(
 data class CustomerInfo(
     val name: PersonalName,
     val emailAddress: EmailAddress,
+    val vipStatus: VipStatus,
 )
 
 // ==================================
@@ -36,6 +37,8 @@ data class Address(
     val addressLine4: String50?,
     val city: String50,
     val zipCode: ZipCode,
+    val state: UsStateCode,
+    val country: String50,
 )
 
 // ==================================
