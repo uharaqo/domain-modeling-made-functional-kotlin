@@ -193,36 +193,6 @@ value class KilogramQuantity(val value: Double) {
     }
 }
 
-// A Quantity is either a Unit or a Kilogram
-sealed interface OrderQuantity {
-    val quantity: Double
-
-    @JvmInline
-    value class Unit(val value: UnitQuantity) : OrderQuantity {
-        override val quantity: Double
-            get() = value.value.toDouble()
-    }
-
-    @JvmInline
-    value class Kilogram(val value: KilogramQuantity) : OrderQuantity {
-        override val quantity: Double
-            get() = value.value
-    }
-
-    companion object {
-        // Create a OrderQuantity from a productCode and quantity
-        operator fun invoke(
-            fieldName: String,
-            productCode: ProductCode,
-            quantity: Double,
-        ): Either<String, OrderQuantity> =
-            when (productCode) {
-                is ProductCode.Gizmo -> UnitQuantity(fieldName, quantity.toInt()).map(OrderQuantity::Unit)
-                is ProductCode.Widget -> KilogramQuantity(fieldName, quantity).map(OrderQuantity::Kilogram)
-            }
-    }
-}
-
 // Constrained to be a decimal between 0.0 and 1000.00
 @JvmInline
 value class Price(val value: Double) {
@@ -269,68 +239,3 @@ data class PdfAttachment(
 
 @JvmInline
 value class PromotionCode(val value: String)
-
-// ===============================
-// Reusable constructors and getters for constrained types
-// ===============================
-
-// Useful functions for constrained types
-object ConstrainedType {
-
-    // Create a constrained string using the constructor provided
-    // Return Error if input is null, empty, or length > maxLen
-    fun <T> createString(fieldName: String, ctor: (String) -> T, maxLen: Int, str: String?): Either<String, T> =
-        either {
-            ensureNotNull(str) { "$fieldName must not be null" }
-            ensure(str.isNotEmpty()) { "$fieldName must not be empty" }
-            ensure(str.length <= maxLen) { "$fieldName must not be more than $maxLen chars" }
-            ctor(str)
-        }
-
-    // Create a optional constrained string using the constructor provided
-    // Return None if input is null, empty.
-    // Return error if length > maxLen
-    // Return Some if the input is valid
-    fun <T> createStringOption(fieldName: String, ctor: (String) -> T, maxLen: Int, str: String?): Either<String, T?> =
-        either {
-            nullable {
-                if (str == null) raise(null)
-                this@either.ensure(str.length <= maxLen) { "$fieldName must not be more than $maxLen chars" }
-                ctor(str)
-            }
-        }
-
-    // Create a constrained integer using the constructor provided
-    // Return Error if input is less than minVal or more than maxVal
-    fun <T> createInt(fieldName: String, ctor: (Int) -> T, minVal: Int, maxVal: Int, i: Int): Either<String, T> =
-        either {
-            ensure(i >= minVal) { "$fieldName: Must not be less than $minVal" }
-            ensure(i <= maxVal) { "$fieldName: Must not be greater than $maxVal" }
-            ctor(i)
-        }
-
-    // Create a constrained decimal using the constructor provided
-    // Return Error if input is less than minVal or more than maxVal
-    fun <T> createDecimal(
-        fieldName: String,
-        ctor: (Double) -> T,
-        minVal: Double,
-        maxVal: Double,
-        i: Double,
-    ): Either<String, T> =
-        either {
-            ensure(i >= minVal) { "$fieldName: Must not be less than $minVal" }
-            ensure(i <= maxVal) { "$fieldName: Must not be greater than $maxVal" }
-            ctor(i)
-        }
-
-    // Create a constrained string using the constructor provided
-    // Return Error if input is null. empty, or does not match the regex pattern
-    fun <T> createLike(fieldName: String, ctor: (String) -> T, pattern: Regex, str: String?): Either<String, T> =
-        either {
-            ensureNotNull(str) { "$fieldName: Must not be null" }
-            ensure(str.isNotEmpty()) { "$fieldName: Must not be empty" }
-            ensure(pattern.matches(str)) { "$fieldName: '$str' must match the pattern '$pattern'" }
-            ctor(str)
-        }
-}
