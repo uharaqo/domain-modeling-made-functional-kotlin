@@ -35,18 +35,12 @@ tasks.named("compileKotlin", org.jetbrains.kotlin.gradle.tasks.KotlinCompilation
     }
 }
 
-//import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
-//val compileKotlin: KotlinCompilationTask<*> by tasks
-//compileKotlin.compilerOptions.freeCompilerArgs.add("-Xcontext-receivers")
-
 configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
     verbose.set(true)
     android.set(false)
     outputToConsole.set(true)
     coloredOutput.set(true)
     outputColorName.set("RED")
-//    debug.set(true)
-//    ignoreFailures.set(true)
     filter {
         exclude { it.file.path.contains("$buildDir/generated/") }
     }
